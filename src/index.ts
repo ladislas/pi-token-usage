@@ -306,52 +306,66 @@ function filterSince(records: UsageRecord[], sinceMs: number): UsageRecord[] {
 
 // ── Table rendering ─────────────────────────────────────────────────────────
 
-function renderTotalsLine(label: string, t: Totals, labelWidth: number = 16): string {
+interface TableWidths {
+	first: number;
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	cost: number;
+}
+
+function computeWidths(firstHeader: string, rows: Array<{ first: string; totals: Totals }>): TableWidths {
+	let first = visibleWidth(firstHeader);
+	let input = visibleWidth("Input");
+	let output = visibleWidth("Output");
+	let cacheRead = visibleWidth("Cache R");
+	let cacheWrite = visibleWidth("Cache W");
+	let cost = visibleWidth("Cost");
+
+	for (const row of rows) {
+		first = Math.max(first, visibleWidth(row.first));
+		input = Math.max(input, visibleWidth(fmtTokens(row.totals.input)));
+		output = Math.max(output, visibleWidth(fmtTokens(row.totals.output)));
+		cacheRead = Math.max(cacheRead, visibleWidth(fmtTokens(row.totals.cacheRead)));
+		cacheWrite = Math.max(cacheWrite, visibleWidth(fmtTokens(row.totals.cacheWrite)));
+		cost = Math.max(cost, visibleWidth(fmtCost(row.totals.costTotal)));
+	}
+
+	return { first, input, output, cacheRead, cacheWrite, cost };
+}
+
+function renderHeader(firstHeader: string, widths: TableWidths): string {
 	return (
-		`  ${D}${padL(label, labelWidth)}${RST}` +
-		`  ${pad(fmtTokens(t.input), 9)}` +
-		`  ${pad(fmtTokens(t.output), 9)}` +
-		`  ${pad(fmtTokens(t.cacheRead), 9)}` +
-		`  ${pad(fmtTokens(t.cacheWrite), 9)}` +
-		`  ${pad(colorCost(t.costTotal), 18)}`
+		`  ${D}${padL(firstHeader, widths.first)}${RST}` +
+		`  ${D}${pad("Input", widths.input)}${RST}` +
+		`   ${D}${pad("Output", widths.output)}${RST}` +
+		`   ${D}${pad("Cache R", widths.cacheRead)}${RST}` +
+		`   ${D}${pad("Cache W", widths.cacheWrite)}${RST}` +
+		`   ${D}${pad("Cost", widths.cost)}${RST}`
 	);
 }
 
-function renderHeader(labelWidth: number = 16): string {
+function renderTotalsLine(label: string, t: Totals, widths: TableWidths): string {
 	return (
-		`  ${D}${padL("", labelWidth)}` +
-		`  ${pad("Input", 9)}` +
-		`  ${pad("Output", 9)}` +
-		`  ${pad("Cache R", 9)}` +
-		`  ${pad("Cache W", 9)}` +
-		`  ${pad("Cost", 9)}${RST}`
+		`  ${padL(label, widths.first)}` +
+		`  ${pad(fmtTokens(t.input), widths.input)}` +
+		`   ${pad(fmtTokens(t.output), widths.output)}` +
+		`   ${pad(fmtTokens(t.cacheRead), widths.cacheRead)}` +
+		`   ${pad(fmtTokens(t.cacheWrite), widths.cacheWrite)}` +
+		`   ${pad(colorCost(t.costTotal), widths.cost)}`
 	);
 }
 
-function renderModelBreakdown(records: UsageRecord[], indent: string = "    "): string[] {
+function renderModelBreakdown(records: UsageRecord[], widths: TableWidths): string[] {
 	const byModel = aggregateByKey(records, (r) => `${r.provider}/${r.model}`);
 	const sorted = [...byModel.entries()].sort((a, b) => b[1].costTotal - a[1].costTotal);
 	const lines: string[] = [];
 
-	lines.push(
-		`${indent}${D}${padL("Model", 30)}${RST}` +
-			`  ${D}${pad("Input", 9)}` +
-			`  ${pad("Output", 9)}` +
-			`  ${pad("Cache R", 9)}` +
-			`  ${pad("Cache W", 9)}` +
-			`  ${pad("Cost", 9)}${RST}`,
-	);
+	lines.push(renderHeader("Model", widths));
 
 	for (const [model, t] of sorted) {
-		const shortModel = model.length > 30 ? model.slice(0, 28) + ".." : model;
-		lines.push(
-			`${indent}${padL(shortModel, 30)}` +
-				`  ${pad(fmtTokens(t.input), 9)}` +
-				`  ${pad(fmtTokens(t.output), 9)}` +
-				`  ${pad(fmtTokens(t.cacheRead), 9)}` +
-				`  ${pad(fmtTokens(t.cacheWrite), 9)}` +
-				`  ${pad(colorCost(t.costTotal), 18)}`,
-		);
+		lines.push(renderTotalsLine(model, t, widths));
 	}
 	return lines;
 }
@@ -389,19 +403,31 @@ function cmdUsageSummary(): string {
 		if (toMonthStr(r.timestamp) === thisMonth) addToTotals(monthT, r);
 	}
 
+	const summaryRows = [
+		{ first: "Lifetime", totals: lifetime },
+		{ first: "This month", totals: monthT },
+		{ first: "Last 30 days", totals: last30T },
+		{ first: "Last 7 days", totals: last7T },
+		{ first: "Today", totals: todayT },
+	];
+	const todayModelRows = [...aggregateByKey(todayRecords, (r) => `${r.provider}/${r.model}`).entries()].map(
+		([first, totals]) => ({ first, totals }),
+	);
+	const widths = computeWidths("Period", [...summaryRows, ...todayModelRows]);
+
 	const lines: string[] = [];
 	lines.push(`${B}${CYAN}── Token Usage ──${RST}`);
-	lines.push(renderHeader());
-	lines.push(renderTotalsLine("Lifetime", lifetime));
-	lines.push(renderTotalsLine("This month", monthT));
-	lines.push(renderTotalsLine("Last 30 days", last30T));
-	lines.push(renderTotalsLine("Last 7 days", last7T));
-	lines.push(renderTotalsLine("Today", todayT));
+	lines.push(renderHeader("Period", widths));
+	lines.push(renderTotalsLine("Lifetime", lifetime, widths));
+	lines.push(renderTotalsLine("This month", monthT, widths));
+	lines.push(renderTotalsLine("Last 30 days", last30T, widths));
+	lines.push(renderTotalsLine("Last 7 days", last7T, widths));
+	lines.push(renderTotalsLine("Today", todayT, widths));
 
 	if (todayRecords.length > 0) {
 		lines.push("");
 		lines.push(`${B}${CYAN}── Today by Model ──${RST}`);
-		lines.push(...renderModelBreakdown(todayRecords));
+		lines.push(...renderModelBreakdown(todayRecords, widths));
 	}
 
 	lines.push("");
