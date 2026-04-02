@@ -72,12 +72,22 @@ function colorCost(n: number): string {
 	return `${GREEN}${s}${RST}`;
 }
 
+function stripAnsi(s: string): string {
+	return s.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+function visibleWidth(s: string): number {
+	return stripAnsi(s).length;
+}
+
 function pad(s: string, width: number): string {
-	return s.length >= width ? s : " ".repeat(width - s.length) + s;
+	const len = visibleWidth(s);
+	return len >= width ? s : " ".repeat(width - len) + s;
 }
 
 function padL(s: string, width: number): string {
-	return s.length >= width ? s : s + " ".repeat(width - s.length);
+	const len = visibleWidth(s);
+	return len >= width ? s : s + " ".repeat(width - len);
 }
 
 // ── Date helpers ────────────────────────────────────────────────────────────
