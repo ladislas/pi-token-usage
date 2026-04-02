@@ -572,28 +572,43 @@ function cmdUsageSessions(n: number): string {
 		}
 	}
 
+	const rows = sorted.map(([sessionId, t]) => ({
+		session: sessionId,
+		project: projectShortName(sessionProject.get(sessionId) ?? "unknown"),
+		input: fmtTokens(t.input),
+		output: fmtTokens(t.output),
+		cost: colorCost(t.costTotal),
+		msgs: String(t.count),
+	}));
+
+	const widths = {
+		session: Math.max(visibleWidth("Session"), ...rows.map((r) => visibleWidth(r.session))),
+		project: Math.max(visibleWidth("Project"), ...rows.map((r) => visibleWidth(r.project))),
+		input: Math.max(visibleWidth("Input"), ...rows.map((r) => visibleWidth(r.input))),
+		output: Math.max(visibleWidth("Output"), ...rows.map((r) => visibleWidth(r.output))),
+		cost: Math.max(visibleWidth("Cost"), ...rows.map((r) => visibleWidth(r.cost))),
+		msgs: Math.max(visibleWidth("Msgs"), ...rows.map((r) => visibleWidth(r.msgs))),
+	};
+
 	const lines: string[] = [];
 	lines.push(`${B}${CYAN}── Top ${n} Sessions by Cost ──${RST}`);
 	lines.push(
-		`  ${D}${padL("Session", 20)}` +
-			`  ${padL("Project", 20)}` +
-			`  ${pad("Input", 9)}` +
-			`  ${pad("Output", 9)}` +
-			`  ${pad("Cost", 9)}` +
-			`  ${pad("Msgs", 6)}${RST}`,
+		`  ${D}${padL("Session", widths.session)}${RST}` +
+			`  ${D}${padL("Project", widths.project)}${RST}` +
+			`  ${D}${pad("Input", widths.input)}${RST}` +
+			`   ${D}${pad("Output", widths.output)}${RST}` +
+			`   ${D}${pad("Cost", widths.cost)}${RST}` +
+			`   ${D}${pad("Msgs", widths.msgs)}${RST}`,
 	);
 
-	for (const [sessionId, t] of sorted) {
-		const proj = projectShortName(sessionProject.get(sessionId) ?? "unknown");
-		const shortId = sessionId.length > 20 ? sessionId.slice(0, 18) + ".." : sessionId;
-		const shortProj = proj.length > 20 ? proj.slice(0, 18) + ".." : proj;
+	for (const row of rows) {
 		lines.push(
-			`  ${padL(shortId, 20)}` +
-				`  ${D}${padL(shortProj, 20)}${RST}` +
-				`  ${pad(fmtTokens(t.input), 9)}` +
-				`  ${pad(fmtTokens(t.output), 9)}` +
-				`  ${pad(colorCost(t.costTotal), 18)}` +
-				`  ${pad(String(t.count), 6)}`,
+			`  ${padL(row.session, widths.session)}` +
+				`  ${padL(row.project, widths.project)}` +
+				`  ${pad(row.input, widths.input)}` +
+				`   ${pad(row.output, widths.output)}` +
+				`   ${pad(row.cost, widths.cost)}` +
+				`   ${pad(row.msgs, widths.msgs)}`,
 		);
 	}
 
