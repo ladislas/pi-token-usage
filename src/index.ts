@@ -322,10 +322,20 @@ function renderModelBreakdown(records: UsageRecord[], indent: string = "    "): 
 	const byModel = aggregateByKey(records, (r) => `${r.provider}/${r.model}`);
 	const sorted = [...byModel.entries()].sort((a, b) => b[1].costTotal - a[1].costTotal);
 	const lines: string[] = [];
+
+	lines.push(
+		`${indent}${D}${padL("Model", 30)}${RST}` +
+			`  ${D}${pad("Input", 9)}` +
+			`  ${pad("Output", 9)}` +
+			`  ${pad("Cache R", 9)}` +
+			`  ${pad("Cache W", 9)}` +
+			`  ${pad("Cost", 9)}${RST}`,
+	);
+
 	for (const [model, t] of sorted) {
 		const shortModel = model.length > 30 ? model.slice(0, 28) + ".." : model;
 		lines.push(
-			`${indent}${D}${padL(shortModel, 30)}${RST}` +
+			`${indent}${padL(shortModel, 30)}` +
 				`  ${pad(fmtTokens(t.input), 9)}` +
 				`  ${pad(fmtTokens(t.output), 9)}` +
 				`  ${pad(fmtTokens(t.cacheRead), 9)}` +
