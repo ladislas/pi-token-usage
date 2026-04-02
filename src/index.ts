@@ -634,6 +634,22 @@ function cmdUsageProjects(): string {
 	return lines.join("\n");
 }
 
+function cmdUsageHelp(): string {
+	return [
+		`${B}${CYAN}── Usage Commands ──${RST}`,
+		`  ${B}/usage${RST}                 Summary: lifetime, month, 30d, 7d, today`,
+		`  ${B}/usage models${RST}          Breakdown by provider/model`,
+		`  ${B}/usage days [N]${RST}        Daily rollup for last N days (default: 7)`,
+		`  ${B}/usage months${RST}          Monthly rollup`,
+		`  ${B}/usage sessions [N]${RST}    Top N sessions by cost (default: 20)`,
+		`  ${B}/usage projects${RST}        Breakdown by project`,
+		`  ${B}/usage refresh${RST}         Clear cache and rescan session files`,
+		`  ${B}/usage help${RST}            Show this help`,
+		``,
+		`${D}Aliases: /usage ?, /usage --help${RST}`,
+	].join("\n");
+}
+
 // ── Extension entry point ───────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
@@ -646,6 +662,11 @@ export default function (pi: ExtensionAPI) {
 			let output: string;
 
 			switch (sub) {
+				case "help":
+				case "?":
+				case "--help":
+					output = cmdUsageHelp();
+					break;
 				case "models":
 					output = cmdUsageModels();
 					break;
