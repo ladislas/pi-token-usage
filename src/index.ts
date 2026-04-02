@@ -443,28 +443,47 @@ function cmdUsageModels(): string {
 	const byModel = aggregateByKey(records, (r) => `${r.provider}/${r.model}`);
 	const sorted = [...byModel.entries()].sort((a, b) => b[1].costTotal - a[1].costTotal);
 
+	const rows = sorted.map(([model, t]) => ({
+		model,
+		input: fmtTokens(t.input),
+		output: fmtTokens(t.output),
+		cacheRead: fmtTokens(t.cacheRead),
+		cacheWrite: fmtTokens(t.cacheWrite),
+		cost: colorCost(t.costTotal),
+		msgs: String(t.count),
+	}));
+
+	const widths = {
+		model: Math.max(visibleWidth("Model"), ...rows.map((r) => visibleWidth(r.model))),
+		input: Math.max(visibleWidth("Input"), ...rows.map((r) => visibleWidth(r.input))),
+		output: Math.max(visibleWidth("Output"), ...rows.map((r) => visibleWidth(r.output))),
+		cacheRead: Math.max(visibleWidth("Cache R"), ...rows.map((r) => visibleWidth(r.cacheRead))),
+		cacheWrite: Math.max(visibleWidth("Cache W"), ...rows.map((r) => visibleWidth(r.cacheWrite))),
+		cost: Math.max(visibleWidth("Cost"), ...rows.map((r) => visibleWidth(r.cost))),
+		msgs: Math.max(visibleWidth("Msgs"), ...rows.map((r) => visibleWidth(r.msgs))),
+	};
+
 	const lines: string[] = [];
 	lines.push(`${B}${CYAN}── Usage by Model ──${RST}`);
 	lines.push(
-		`  ${D}${padL("Model", 30)}` +
-			`  ${pad("Input", 9)}` +
-			`  ${pad("Output", 9)}` +
-			`  ${pad("Cache R", 9)}` +
-			`  ${pad("Cache W", 9)}` +
-			`  ${pad("Cost", 9)}` +
-			`  ${pad("Msgs", 6)}${RST}`,
+		`  ${D}${padL("Model", widths.model)}${RST}` +
+			`  ${D}${pad("Input", widths.input)}${RST}` +
+			`   ${D}${pad("Output", widths.output)}${RST}` +
+			`   ${D}${pad("Cache R", widths.cacheRead)}${RST}` +
+			`   ${D}${pad("Cache W", widths.cacheWrite)}${RST}` +
+			`   ${D}${pad("Cost", widths.cost)}${RST}` +
+			`   ${D}${pad("Msgs", widths.msgs)}${RST}`,
 	);
 
-	for (const [model, t] of sorted) {
-		const shortModel = model.length > 30 ? model.slice(0, 28) + ".." : model;
+	for (const row of rows) {
 		lines.push(
-			`  ${padL(shortModel, 30)}` +
-				`  ${pad(fmtTokens(t.input), 9)}` +
-				`  ${pad(fmtTokens(t.output), 9)}` +
-				`  ${pad(fmtTokens(t.cacheRead), 9)}` +
-				`  ${pad(fmtTokens(t.cacheWrite), 9)}` +
-				`  ${pad(colorCost(t.costTotal), 18)}` +
-				`  ${pad(String(t.count), 6)}`,
+			`  ${padL(row.model, widths.model)}` +
+				`  ${pad(row.input, widths.input)}` +
+				`   ${pad(row.output, widths.output)}` +
+				`   ${pad(row.cacheRead, widths.cacheRead)}` +
+				`   ${pad(row.cacheWrite, widths.cacheWrite)}` +
+				`   ${pad(row.cost, widths.cost)}` +
+				`   ${pad(row.msgs, widths.msgs)}`,
 		);
 	}
 
