@@ -588,28 +588,46 @@ function cmdUsageProjects(): string {
 	const byProject = aggregateByKey(records, (r) => r.project);
 	const sorted = [...byProject.entries()].sort((a, b) => b[1].costTotal - a[1].costTotal);
 
+	const rows = sorted.map(([project, t]) => {
+		const sessionCount = new Set(records.filter((r) => r.project === project).map((r) => r.sessionId)).size;
+		return {
+			project: projectShortName(project),
+			input: fmtTokens(t.input),
+			output: fmtTokens(t.output),
+			cost: colorCost(t.costTotal),
+			msgs: String(t.count),
+			sessions: String(sessionCount),
+		};
+	});
+
+	const widths = {
+		project: Math.max(visibleWidth("Project"), ...rows.map((r) => visibleWidth(r.project))),
+		input: Math.max(visibleWidth("Input"), ...rows.map((r) => visibleWidth(r.input))),
+		output: Math.max(visibleWidth("Output"), ...rows.map((r) => visibleWidth(r.output))),
+		cost: Math.max(visibleWidth("Cost"), ...rows.map((r) => visibleWidth(r.cost))),
+		msgs: Math.max(visibleWidth("Msgs"), ...rows.map((r) => visibleWidth(r.msgs))),
+		sessions: Math.max(visibleWidth("Sessions"), ...rows.map((r) => visibleWidth(r.sessions))),
+	};
+
 	const lines: string[] = [];
 	lines.push(`${B}${CYAN}── Usage by Project ──${RST}`);
 	lines.push(
-		`  ${D}${padL("Project", 35)}` +
-			`  ${pad("Input", 9)}` +
-			`  ${pad("Output", 9)}` +
-			`  ${pad("Cost", 9)}` +
-			`  ${pad("Msgs", 6)}` +
-			`  ${pad("Sessions", 8)}${RST}`,
+		`  ${D}${padL("Project", widths.project)}${RST}` +
+			`  ${D}${pad("Input", widths.input)}${RST}` +
+			`   ${D}${pad("Output", widths.output)}${RST}` +
+			`   ${D}${pad("Cost", widths.cost)}${RST}` +
+			`   ${D}${pad("Msgs", widths.msgs)}${RST}` +
+			`   ${D}${pad("Sessions", widths.sessions)}${RST}`,
 	);
 
-	for (const [project, t] of sorted) {
-		const shortProj = projectShortName(project);
-		const displayProj = shortProj.length > 35 ? shortProj.slice(0, 33) + ".." : shortProj;
-		const sessionCount = new Set(records.filter((r) => r.project === project).map((r) => r.sessionId)).size;
+	for (const row of rows) {
 		lines.push(
-			`  ${padL(displayProj, 35)}` +
-				`  ${pad(fmtTokens(t.input), 9)}` +
-				`  ${pad(fmtTokens(t.output), 9)}` +
-				`  ${pad(colorCost(t.costTotal), 18)}` +
-				`  ${pad(String(t.count), 6)}` +
-				`  ${pad(String(sessionCount), 8)}`,
+			`  ${padL(row.project, widths.project)}` +
+				`  ${pad(row.input, widths.input)}` +
+				`   ${pad(row.output, widths.output)}` +
+				`   ${pad(row.cost, widths.cost)}` +
+				`   ${pad(row.msgs, widths.msgs)}` +
+				`   ${pad(row.sessions, widths.sessions)}`,
 		);
 	}
 
