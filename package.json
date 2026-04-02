@@ -1,0 +1,20 @@
+{
+  "name": "pi-token-usage",
+  "version": "0.1.0",
+  "description": "Pi extension for lifetime token usage tracking and cost analytics across all sessions",
+  "keywords": ["pi-package", "pi-extension"],
+  "license": "MIT",
+  "author": "Ladislas de Toldi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ladislas/pi-token-usage.git"
+  },
+  "type": "module",
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "files": ["src", "README.md", "LICENSE"],
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": ">=0.55.0"
+  }
+}
