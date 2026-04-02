@@ -413,7 +413,10 @@ function cmdUsageSummary(): string {
 	const todayModelRows = [...aggregateByKey(todayRecords, (r) => `${r.provider}/${r.model}`).entries()].map(
 		([first, totals]) => ({ first, totals }),
 	);
-	const widths = computeWidths("Period", [...summaryRows, ...todayModelRows]);
+	const todayProjectRows = [...aggregateByKey(todayRecords, (r) => projectShortName(r.project)).entries()].map(
+		([first, totals]) => ({ first, totals }),
+	);
+	const widths = computeWidths("Period", [...summaryRows, ...todayModelRows, ...todayProjectRows]);
 
 	const lines: string[] = [];
 	lines.push(`${B}${CYAN}── Token Usage ──${RST}`);
@@ -428,6 +431,14 @@ function cmdUsageSummary(): string {
 		lines.push("");
 		lines.push(`${B}${CYAN}── Today by Model ──${RST}`);
 		lines.push(...renderModelBreakdown(todayRecords, widths));
+		lines.push("");
+		lines.push(`${B}${CYAN}── Today by Project ──${RST}`);
+		lines.push(renderHeader("Project", widths));
+		for (const [project, totals] of [...aggregateByKey(todayRecords, (r) => projectShortName(r.project)).entries()].sort(
+			(a, b) => b[1].costTotal - a[1].costTotal,
+		)) {
+			lines.push(renderTotalsLine(project, totals, widths));
+		}
 	}
 
 	lines.push("");
