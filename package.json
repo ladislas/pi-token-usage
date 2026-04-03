@@ -1,6 +1,6 @@
 {
   "name": "pi-token-usage",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pi extension for lifetime token usage tracking and cost analytics across all sessions",
   "keywords": [
     "pi",
@@ -23,9 +23,15 @@
   },
   "type": "module",
   "pi": {
-    "extensions": ["./src/index.ts"]
+    "extensions": [
+      "./src/index.ts"
+    ]
   },
-  "files": ["src", "README.md", "LICENSE"],
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "vitest run"
   },
