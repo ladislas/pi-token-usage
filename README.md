@@ -16,7 +16,7 @@ Pi already shows token usage per session. `pi-token-usage` adds a cross-session 
 - **Per-project breakdown** — usage grouped by working directory
 - **Per-session breakdown** — top sessions by cost
 - **Live footer status** — today's project and total consumption in the footer
-- **Customizable footer** — enable/disable it and choose which metrics to show
+- **Customizable footer** — enable/disable it, choose metrics, labels, separators, and presets
 - **Fast refresh** — clear cached scan results and rescan session files
 - **Simple commands** — query usage directly from pi with `/usage ...`
 
@@ -43,10 +43,14 @@ pi install git:github.com/ladislas/pi-token-usage
 /usage months          — monthly rollup
 /usage sessions [N]    — top N sessions by cost (default: 20)
 /usage projects        — breakdown by project
-/usage footer          — show footer config and available items
-/usage footer on|off   — enable or disable the footer
-/usage footer items …  — choose footer items to show
-/usage footer reset    — remove project footer config
+/usage footer                     — show footer config and available items
+/usage footer on|off              — enable or disable the footer
+/usage footer items …             — choose footer items to show
+/usage footer preset <name>       — apply a footer ordering preset
+/usage footer separator <text>    — set the footer separator
+/usage footer label <item> <text> — set a custom label for one item
+/usage footer unlabel <item>      — remove a custom item label
+/usage footer reset               — remove project footer config
 /usage refresh         — clear cache and rescan session files
 /usage help            — show command help
 ```
@@ -86,6 +90,11 @@ You can customize it per project:
 /usage footer off
 /usage footer items projectTodayCost,totalTodayCost
 /usage footer items projectTodayTokens,totalTodayTokens
+/usage footer preset summary
+/usage footer preset full
+/usage footer separator |
+/usage footer label projectTodaySummary Mine
+/usage footer unlabel projectTodaySummary
 /usage footer reset
 ```
 
@@ -94,6 +103,15 @@ Available footer items:
 - `totalTodayCost`
 - `projectTodayTokens`
 - `totalTodayTokens`
+- `projectTodaySummary`  — e.g. `Proj today $1.23 / 42K tok`
+- `totalTodaySummary`    — e.g. `Total today $8.76 / 210K tok`
+
+Available presets:
+- `minimal`
+- `costs`
+- `tokens`
+- `summary`
+- `full`
 
 Project-specific footer settings are stored in:
 

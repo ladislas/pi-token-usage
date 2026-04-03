@@ -11,11 +11,14 @@ import {
 } from "./commands";
 import {
 	buildFooterStatus,
+	FOOTER_PRESETS,
 	formatFooterConfig,
 	loadFooterConfig,
 	parseFooterItems,
+	parseFooterPreset,
 	resetProjectFooterConfig,
 	saveProjectFooterConfig,
+	writeProjectFooterConfig,
 } from "./footer";
 import { refreshCachedRecords, scanAllSessions } from "./scan";
 
@@ -107,6 +110,39 @@ export default function (pi: ExtensionAPI) {
 								output = `Footer items updated.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
 								break;
 							}
+							case "preset": {
+								const preset = parseFooterPreset(parts[2] ?? "");
+								saveProjectFooterConfig(ctx.cwd, { items: FOOTER_PRESETS[preset] });
+								output = `Footer preset '${preset}' applied.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
+								break;
+							}
+							case "separator": {
+								const separator = trimmed.split(/\s+/).slice(2).join(" ");
+								if (separator.length === 0) throw new Error("No separator provided.");
+								saveProjectFooterConfig(ctx.cwd, { separator });
+								output = `Footer separator updated.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
+								break;
+							}
+							case "label": {
+								const items = parseFooterItems(parts[2] ?? "");
+								if (items.length !== 1) throw new Error("Provide exactly one footer item for /usage footer label.");
+								const label = trimmed.split(/\s+/).slice(3).join(" ");
+								if (label.length === 0) throw new Error("No label provided.");
+								const config = loadFooterConfig(ctx.cwd);
+								saveProjectFooterConfig(ctx.cwd, { labels: { ...config.labels, [items[0]]: label } });
+								output = `Footer label updated.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
+								break;
+							}
+							case "unlabel": {
+								const items = parseFooterItems(parts[2] ?? "");
+								if (items.length !== 1) throw new Error("Provide exactly one footer item for /usage footer unlabel.");
+								const config = loadFooterConfig(ctx.cwd);
+								const labels = { ...config.labels };
+								delete labels[items[0]];
+								writeProjectFooterConfig(ctx.cwd, { ...config, labels });
+								output = `Footer label removed.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
+								break;
+							}
 							case "reset":
 								resetProjectFooterConfig(ctx.cwd);
 								output = `Project footer config removed.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
@@ -118,6 +154,10 @@ export default function (pi: ExtensionAPI) {
 									"  /usage footer on",
 									"  /usage footer off",
 									"  /usage footer items projectTodayCost,totalTodayCost",
+									"  /usage footer preset minimal|costs|tokens|summary|full",
+									"  /usage footer separator |",
+									"  /usage footer label projectTodayCost My project",
+									"  /usage footer unlabel projectTodayCost",
 									"  /usage footer reset",
 								].join("\n");
 								break;

@@ -2,7 +2,16 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildFooterStatus, DEFAULT_FOOTER_CONFIG, parseFooterItems, saveProjectFooterConfig } from "../src/footer";
+import {
+	buildFooterStatus,
+	DEFAULT_FOOTER_CONFIG,
+	FOOTER_PRESETS,
+	formatFooterConfig,
+	parseFooterItems,
+	parseFooterPreset,
+	saveProjectFooterConfig,
+	writeProjectFooterConfig,
+} from "../src/footer";
 import type { UsageRecord } from "../src/types";
 
 const tempDirs: string[] = [];
@@ -80,8 +89,38 @@ describe("footer helpers", () => {
 				enabled: true,
 				items: ["projectTodayTokens", "totalTodayTokens"],
 				separator: " | ",
+				labels: {},
 			}),
 		).toBe("Proj today 12K tok | Total today 82K tok");
+	});
+
+	it("supports combined summary items and custom labels", () => {
+		const now = Date.now();
+		const records = [
+			record({
+				timestamp: now,
+				isoTimestamp: new Date(now).toISOString(),
+				project: "/tmp/project-a",
+				totalTokens: 12_345,
+				costTotal: 1.23,
+			}),
+			record({
+				timestamp: now + 1,
+				isoTimestamp: new Date(now + 1).toISOString(),
+				project: "/tmp/project-b",
+				totalTokens: 70_000,
+				costTotal: 2.5,
+			}),
+		];
+
+		expect(
+			buildFooterStatus(records, "/tmp/project-a", {
+				enabled: true,
+				items: ["projectTodaySummary", "totalTodaySummary"],
+				separator: " || ",
+				labels: { projectTodaySummary: "Here", totalTodaySummary: "All" },
+			}),
+		).toBe("Here $1.23 / 12K tok || All $3.73 / 82K tok");
 	});
 
 	it("parses footer items and removes duplicates", () => {
@@ -91,11 +130,64 @@ describe("footer helpers", () => {
 		]);
 	});
 
+	it("parses footer presets", () => {
+		expect(parseFooterPreset("summary")).toBe("summary");
+		expect(FOOTER_PRESETS.full).toEqual([
+			"projectTodayTokens",
+			"projectTodayCost",
+			"totalTodayTokens",
+			"totalTodayCost",
+		]);
+	});
+
+	it("formats config with labels and presets", () => {
+		const cwd = "/tmp/project-a";
+		const output = formatFooterConfig(
+			{
+				enabled: true,
+				items: ["projectTodaySummary"],
+				separator: " | ",
+				labels: { projectTodaySummary: "Mine" },
+			},
+			cwd,
+		);
+
+		expect(output).toContain("Custom labels: projectTodaySummary=\"Mine\"");
+		expect(output).toContain("Presets: minimal, costs, tokens, summary, full");
+	});
+
 	it("writes project footer config", () => {
 		const cwd = makeTempDir();
-		const config = saveProjectFooterConfig(cwd, { enabled: false, items: ["totalTodayTokens"], separator: " | " });
+		const config = saveProjectFooterConfig(cwd, {
+			enabled: false,
+			items: ["totalTodaySummary"],
+			separator: " | ",
+			labels: { totalTodaySummary: "Everything" },
+		});
 
-		expect(config).toEqual({ enabled: false, items: ["totalTodayTokens"], separator: " | " });
+		expect(config).toEqual({
+			enabled: false,
+			items: ["totalTodaySummary"],
+			separator: " | ",
+			labels: { totalTodaySummary: "Everything" },
+		});
+		expect(JSON.parse(readFileSync(join(cwd, ".pi-token-usage.json"), "utf-8"))).toEqual(config);
+	});
+
+	it("can overwrite labels to remove an existing label", () => {
+		const cwd = makeTempDir();
+		saveProjectFooterConfig(cwd, {
+			labels: { projectTodaySummary: "Mine", totalTodaySummary: "Everything" },
+		});
+
+		const config = writeProjectFooterConfig(cwd, {
+			enabled: true,
+			items: ["projectTodaySummary", "totalTodaySummary"],
+			separator: "  •  ",
+			labels: { totalTodaySummary: "Everything" },
+		});
+
+		expect(config.labels).toEqual({ totalTodaySummary: "Everything" });
 		expect(JSON.parse(readFileSync(join(cwd, ".pi-token-usage.json"), "utf-8"))).toEqual(config);
 	});
 });
