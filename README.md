@@ -15,6 +15,8 @@ Pi already shows token usage per session. `pi-token-usage` adds a cross-session 
 - **Per-model breakdown** — usage grouped by provider/model
 - **Per-project breakdown** — usage grouped by working directory
 - **Per-session breakdown** — top sessions by cost
+- **Live footer status** — today's project and total consumption in the footer
+- **Customizable footer** — enable/disable it and choose which metrics to show
 - **Fast refresh** — clear cached scan results and rescan session files
 - **Simple commands** — query usage directly from pi with `/usage ...`
 
@@ -41,6 +43,10 @@ pi install git:github.com/ladislas/pi-token-usage
 /usage months          — monthly rollup
 /usage sessions [N]    — top N sessions by cost (default: 20)
 /usage projects        — breakdown by project
+/usage footer          — show footer config and available items
+/usage footer on|off   — enable or disable the footer
+/usage footer items …  — choose footer items to show
+/usage footer reset    — remove project footer config
 /usage refresh         — clear cache and rescan session files
 /usage help            — show command help
 ```
@@ -65,6 +71,41 @@ Today          9.2k      802      21.3k     0         $0.08
 ```
 
 You can then drill down with `/usage models`, `/usage sessions`, `/usage projects`, or `/usage days 30`.
+
+## Footer
+
+By default, the extension adds a footer status with:
+- today's current-project cost
+- today's total cost across all projects
+
+You can customize it per project:
+
+```text
+/usage footer
+/usage footer on
+/usage footer off
+/usage footer items projectTodayCost,totalTodayCost
+/usage footer items projectTodayTokens,totalTodayTokens
+/usage footer reset
+```
+
+Available footer items:
+- `projectTodayCost`
+- `totalTodayCost`
+- `projectTodayTokens`
+- `totalTodayTokens`
+
+Project-specific footer settings are stored in:
+
+```text
+<your-project>/.pi-token-usage.json
+```
+
+A global default config can also be placed at:
+
+```text
+~/.pi/agent/.pi-token-usage.json
+```
 
 ## How it works
 
