@@ -9,6 +9,21 @@ import {
 	cmdUsageSummary,
 	refreshUsageData,
 } from "./commands";
+import {
+	applyFooterTheme,
+	buildFooterStatus,
+	FOOTER_PRESETS,
+	formatFooterConfig,
+	formatFooterTemplateVars,
+	loadFooterConfig,
+	parseFooterItems,
+	parseFooterPreset,
+	parseFooterStyle,
+	resetProjectFooterConfig,
+	saveProjectFooterConfig,
+	writeProjectFooterConfig,
+} from "./footer";
+import { refreshCachedRecords, scanAllSessions } from "./scan";
 
 /**
  * pi-token-usage — Lifetime token usage tracking and cost analytics
@@ -20,13 +35,30 @@ import {
  *   /usage days [N]     — Daily rollup for last N days (default: 7)
  *   /usage months       — Monthly rollup
  *   /usage projects     — Breakdown by project
+ *   /usage footer       — Show or customize footer status
  *   /usage refresh      — Force rescan
  */
 export default function (pi: ExtensionAPI) {
+	const updateFooterStatus = (ctx: any) => {
+		refreshCachedRecords();
+		const config = loadFooterConfig(ctx.cwd);
+		const status = buildFooterStatus(scanAllSessions(), ctx.cwd, config);
+		ctx.ui.setStatus("token-usage", status ? applyFooterTheme(status, config.style, ctx.ui.theme) : undefined);
+	};
+
+	pi.on("session_start", async (_event, ctx) => {
+		updateFooterStatus(ctx);
+	});
+
+	pi.on("turn_end", async (_event, ctx) => {
+		updateFooterStatus(ctx);
+	});
+
 	pi.registerCommand("usage", {
 		description: "Token usage analytics — lifetime, by model, day, month, session, project",
 		handler: async (args, ctx) => {
-			const parts = (args ?? "").trim().split(/\s+/);
+			const trimmed = (args ?? "").trim();
+			const parts = trimmed.length > 0 ? trimmed.split(/\s+/) : [];
 			const sub = parts[0]?.toLowerCase();
 
 			let output: string;
@@ -56,9 +88,97 @@ export default function (pi: ExtensionAPI) {
 				case "projects":
 					output = cmdUsageProjects();
 					break;
+				case "footer": {
+					const action = parts[1]?.toLowerCase();
+					try {
+						switch (action) {
+							case undefined:
+							case "show":
+								output = formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd);
+								break;
+							case "vars":
+								output = formatFooterTemplateVars();
+								break;
+							case "on":
+							case "enable":
+								saveProjectFooterConfig(ctx.cwd, { enabled: true });
+								output = `Footer enabled.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
+								break;
+							case "off":
+							case "disable":
+								saveProjectFooterConfig(ctx.cwd, { enabled: false });
+								output = `Footer disabled.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
+								break;
+							case "items": {
+								const rawItems = trimmed.split(/\s+/).slice(2).join(" ");
+								const items = parseFooterItems(rawItems);
+								saveProjectFooterConfig(ctx.cwd, { items });
+								output = `Footer items updated.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
+								break;
+							}
+							case "preset": {
+								const preset = parseFooterPreset(parts[2] ?? "");
+								saveProjectFooterConfig(ctx.cwd, { items: FOOTER_PRESETS[preset] });
+								output = `Footer preset '${preset}' applied.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
+								break;
+							}
+							case "separator": {
+								const separator = trimmed.split(/\s+/).slice(2).join(" ");
+								if (separator.length === 0) throw new Error("No separator provided.");
+								saveProjectFooterConfig(ctx.cwd, { separator });
+								output = `Footer separator updated.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
+								break;
+							}
+							case "style": {
+								const style = parseFooterStyle(parts[2] ?? "");
+								saveProjectFooterConfig(ctx.cwd, { style });
+								output = `Footer style updated.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
+								break;
+							}
+							case "template": {
+								const template = trimmed.split(/\s+/).slice(2).join(" ");
+								if (template.length === 0) throw new Error("No template provided.");
+								saveProjectFooterConfig(ctx.cwd, { template });
+								output = `Footer template updated.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
+								break;
+							}
+							case "untemplate": {
+								const config = loadFooterConfig(ctx.cwd);
+								writeProjectFooterConfig(ctx.cwd, { ...config, template: undefined });
+								output = `Footer template removed.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
+								break;
+							}
+							case "reset":
+								resetProjectFooterConfig(ctx.cwd);
+								output = `Project footer config removed.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
+								break;
+							default:
+								output = [
+									"Usage:",
+									"  /usage footer",
+									"  /usage footer vars",
+									"  /usage footer on",
+									"  /usage footer off",
+									"  /usage footer items projectTodayCost,totalTodayCost",
+									"  /usage footer preset minimal|costs|tokens|summary|full",
+									"  /usage footer separator |",
+									"  /usage footer style plain|muted|cost",
+									"  /usage footer template [project: {projectToday.cost} · {projectToday.tokens} tok]   [total: {totalToday.cost} · {totalToday.tokens} tok]",
+									"  /usage footer untemplate",
+									"  /usage footer reset",
+								].join("\n");
+								break;
+						}
+					} catch (error) {
+						output = error instanceof Error ? error.message : String(error);
+					}
+					updateFooterStatus(ctx);
+					break;
+				}
 				case "refresh":
 					output = refreshUsageData();
 					ctx.ui.notify("Cache cleared and data rescanned.", "info");
+					updateFooterStatus(ctx);
 					break;
 				default:
 					output = cmdUsageSummary();

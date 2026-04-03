@@ -15,6 +15,8 @@ Pi already shows token usage per session. `pi-token-usage` adds a cross-session 
 - **Per-model breakdown** — usage grouped by provider/model
 - **Per-project breakdown** — usage grouped by working directory
 - **Per-session breakdown** — top sessions by cost
+- **Live footer status** — today's project and total consumption in the footer
+- **Customizable footer** — enable/disable it, choose metrics, style, separators, presets, or a full template override
 - **Fast refresh** — clear cached scan results and rescan session files
 - **Simple commands** — query usage directly from pi with `/usage ...`
 
@@ -41,6 +43,16 @@ pi install git:github.com/ladislas/pi-token-usage
 /usage months          — monthly rollup
 /usage sessions [N]    — top N sessions by cost (default: 20)
 /usage projects        — breakdown by project
+/usage footer                     — show footer config and available items
+/usage footer on|off              — enable or disable the footer
+/usage footer items …             — choose footer items to show
+/usage footer preset <name>       — apply a footer ordering preset
+/usage footer separator <text>    — set the footer separator
+/usage footer style <name>        — set footer styling (`plain`, `muted`, `cost`)
+/usage footer template <text>     — override the full footer with a template
+/usage footer untemplate          — remove the footer template override
+/usage footer vars                — show available template variables
+/usage footer reset               — remove project footer config
 /usage refresh         — clear cache and rescan session files
 /usage help            — show command help
 ```
@@ -65,6 +77,85 @@ Today          9.2k      802      21.3k     0         $0.08
 ```
 
 You can then drill down with `/usage models`, `/usage sessions`, `/usage projects`, or `/usage days 30`.
+
+## Footer
+
+By default, the extension adds a footer status with:
+- today's current-project cost
+- today's total cost across all projects
+
+You can customize it per project:
+
+```text
+/usage footer
+/usage footer on
+/usage footer off
+/usage footer items projectTodayCost,totalTodayCost
+/usage footer items projectTodayTokens,totalTodayTokens
+/usage footer preset summary
+/usage footer preset full
+/usage footer separator |
+/usage footer style muted
+/usage footer style cost
+/usage footer template [project: {projectToday.cost} · {projectToday.tokens} tok]   [total: {totalToday.cost} · {totalToday.tokens} tok]
+/usage footer untemplate
+/usage footer vars
+/usage footer reset
+```
+
+Available footer items:
+- `projectTodayCost`
+- `totalTodayCost`
+- `projectTodayTokens`
+- `totalTodayTokens`
+- `projectTodaySummary`  — e.g. `Proj today $1.23 / 42K tok`
+- `totalTodaySummary`    — e.g. `Total today $8.76 / 210K tok`
+
+Available presets:
+- `minimal`
+- `costs`
+- `tokens`
+- `summary`
+- `full`
+
+Styling modes:
+- `plain`  — no styling
+- `muted`  — uses pi theme dim styling, matching the default footer more closely
+- `cost`   — uses pi theme dim styling overall, with cost values colorized via the theme
+
+Template variables use formatted values by default, with `Raw` variants for unformatted numbers.
+
+Examples:
+- `{projectToday.cost}` → `$2.56`
+- `{projectToday.costRaw}` → `2.56`
+- `{projectToday.tokens}` → `3.5M`
+- `{projectToday.tokensRaw}` → `3521456`
+- `{projectToday.summary}` → `$2.56 / 3.5M tok`
+- same shape also exists for `totalToday`
+
+Exact prompt example:
+
+```text
+/usage footer template [project: {projectToday.cost} · {projectToday.tokens} tok]   [total: {totalToday.cost} · {totalToday.tokens} tok]
+```
+
+Which renders like:
+
+```text
+[project: $2.56 · 3.5M tok]   [total: $12.50 · 32.3M tok]
+```
+
+Project-specific footer settings are stored in:
+
+```text
+<your-project>/.pi-token-usage.json
+```
+
+A global default config can also be placed at:
+
+```text
+~/.pi/agent/.pi-token-usage.json
+```
 
 ## How it works
 
