@@ -10,6 +10,7 @@ import {
 	refreshUsageData,
 } from "./commands";
 import {
+	applyFooterTheme,
 	buildFooterStatus,
 	FOOTER_PRESETS,
 	formatFooterConfig,
@@ -17,6 +18,7 @@ import {
 	loadFooterConfig,
 	parseFooterItems,
 	parseFooterPreset,
+	parseFooterStyle,
 	resetProjectFooterConfig,
 	saveProjectFooterConfig,
 	writeProjectFooterConfig,
@@ -41,7 +43,7 @@ export default function (pi: ExtensionAPI) {
 		refreshCachedRecords();
 		const config = loadFooterConfig(ctx.cwd);
 		const status = buildFooterStatus(scanAllSessions(), ctx.cwd, config);
-		ctx.ui.setStatus("token-usage", status);
+		ctx.ui.setStatus("token-usage", status ? applyFooterTheme(status, config.style, ctx.ui.theme) : undefined);
 	};
 
 	pi.on("session_start", async (_event, ctx) => {
@@ -127,6 +129,12 @@ export default function (pi: ExtensionAPI) {
 								output = `Footer separator updated.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
 								break;
 							}
+							case "style": {
+								const style = parseFooterStyle(parts[2] ?? "");
+								saveProjectFooterConfig(ctx.cwd, { style });
+								output = `Footer style updated.\n${formatFooterConfig(loadFooterConfig(ctx.cwd), ctx.cwd)}`;
+								break;
+							}
 							case "template": {
 								const template = trimmed.split(/\s+/).slice(2).join(" ");
 								if (template.length === 0) throw new Error("No template provided.");
@@ -154,6 +162,7 @@ export default function (pi: ExtensionAPI) {
 									"  /usage footer items projectTodayCost,totalTodayCost",
 									"  /usage footer preset minimal|costs|tokens|summary|full",
 									"  /usage footer separator |",
+									"  /usage footer style plain|muted|cost",
 									"  /usage footer template [project: {projectToday.cost} · {projectToday.tokens} tok]   [total: {totalToday.cost} · {totalToday.tokens} tok]",
 									"  /usage footer untemplate",
 									"  /usage footer reset",

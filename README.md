@@ -16,7 +16,7 @@ Pi already shows token usage per session. `pi-token-usage` adds a cross-session 
 - **Per-project breakdown** — usage grouped by working directory
 - **Per-session breakdown** — top sessions by cost
 - **Live footer status** — today's project and total consumption in the footer
-- **Customizable footer** — enable/disable it, choose metrics, separators, presets, or a full template override
+- **Customizable footer** — enable/disable it, choose metrics, style, separators, presets, or a full template override
 - **Fast refresh** — clear cached scan results and rescan session files
 - **Simple commands** — query usage directly from pi with `/usage ...`
 
@@ -48,6 +48,7 @@ pi install git:github.com/ladislas/pi-token-usage
 /usage footer items …             — choose footer items to show
 /usage footer preset <name>       — apply a footer ordering preset
 /usage footer separator <text>    — set the footer separator
+/usage footer style <name>        — set footer styling (`plain`, `muted`, `cost`)
 /usage footer template <text>     — override the full footer with a template
 /usage footer untemplate          — remove the footer template override
 /usage footer vars                — show available template variables
@@ -94,6 +95,8 @@ You can customize it per project:
 /usage footer preset summary
 /usage footer preset full
 /usage footer separator |
+/usage footer style muted
+/usage footer style cost
 /usage footer template [project: {projectToday.cost} · {projectToday.tokens} tok]   [total: {totalToday.cost} · {totalToday.tokens} tok]
 /usage footer untemplate
 /usage footer vars
@@ -114,6 +117,11 @@ Available presets:
 - `tokens`
 - `summary`
 - `full`
+
+Styling modes:
+- `plain`  — no styling
+- `muted`  — uses pi theme dim styling, matching the default footer more closely
+- `cost`   — uses pi theme dim styling overall, with cost values colorized via the theme
 
 Template variables use formatted values by default, with `Raw` variants for unformatted numbers.
 

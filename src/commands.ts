@@ -325,6 +325,7 @@ export function cmdUsageHelp(): string {
 		`  ${B}/usage footer items <comma-separated>${RST} Customize footer items`,
 		`  ${B}/usage footer preset <name>${RST}           Apply an ordering preset`,
 		`  ${B}/usage footer separator <text>${RST}        Customize the footer separator`,
+		`  ${B}/usage footer style <name>${RST}            Set footer styling: plain, muted, cost`,
 		`  ${B}/usage footer template <text>${RST}         Override the entire footer with a template`,
 		`  ${B}/usage footer untemplate${RST}              Remove the footer template override`,
 		`  ${B}/usage footer vars${RST}                    Show available template variables`,

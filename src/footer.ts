@@ -18,10 +18,13 @@ export const FOOTER_ITEM_IDS = [
 export type FooterItemId = (typeof FOOTER_ITEM_IDS)[number];
 export type FooterPresetId = "minimal" | "costs" | "tokens" | "summary" | "full";
 
+export type FooterStyle = "plain" | "muted" | "cost";
+
 export interface FooterConfig {
 	enabled: boolean;
 	items: FooterItemId[];
 	separator: string;
+	style: FooterStyle;
 	template?: string;
 }
 
@@ -53,6 +56,7 @@ export const DEFAULT_FOOTER_CONFIG: FooterConfig = {
 	enabled: true,
 	items: FOOTER_PRESETS.minimal,
 	separator: "  •  ",
+	style: "muted",
 };
 
 const FOOTER_CONFIG_FILENAME = ".pi-token-usage.json";
@@ -160,6 +164,7 @@ export function parseFooterPreset(raw: string): FooterPresetId {
 export function formatFooterConfig(config: FooterConfig, cwd: string): string {
 	return [
 		`Footer: ${config.enabled ? "enabled" : "disabled"}`,
+		`Style: ${config.style}`,
 		`Template: ${config.template ? JSON.stringify(config.template) : "(none)"}`,
 		`Items: ${config.items.join(", ") || "(none)"}`,
 		`Separator: ${JSON.stringify(config.separator)}`,
@@ -217,6 +222,12 @@ export function buildFooterStatus(records: UsageRecord[], cwd: string, config: F
 	return parts.join(config.separator);
 }
 
+export function parseFooterStyle(raw: string): FooterStyle {
+	const value = raw.trim().toLowerCase();
+	if (isFooterStyle(value)) return value;
+	throw new Error(`Unknown footer style: ${raw}. Available styles: plain, muted, cost`);
+}
+
 function formatFooterItem(item: FooterItemId, todayProject: ReturnType<typeof emptyTotals>, todayTotal: ReturnType<typeof emptyTotals>): string {
 	switch (item) {
 		case "projectTodayCost":
@@ -270,6 +281,27 @@ function formatSummary(totals: ReturnType<typeof emptyTotals>): string {
 	return `${fmtCost(totals.costTotal)} / ${fmtTokens(totals.totalTokens)} tok`;
 }
 
+export function applyFooterTheme(text: string, style: FooterStyle, theme: { fg: (name: string, text: string) => string }): string {
+	if (style === "plain") return text;
+	if (style === "muted") return theme.fg("dim", text);
+
+	const parts = text.split(/(\$\d+(?:\.\d+)?)/g);
+	return parts
+		.map((part) => {
+			if (!part) return "";
+			if (/^\$\d+(?:\.\d+)?$/.test(part)) return themeCost(theme, part);
+			return theme.fg("dim", part);
+		})
+		.join("");
+}
+
+function themeCost(theme: { fg: (name: string, text: string) => string }, cost: string): string {
+	const value = Number(cost.slice(1));
+	if (value >= 10) return theme.fg("error", cost);
+	if (value >= 1) return theme.fg("warning", cost);
+	return theme.fg("success", cost);
+}
+
 function writeFooterConfigFile(path: string, config: FooterConfig): void {
 	writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
 }
@@ -290,6 +322,7 @@ function mergeFooterConfigs(...configs: Array<Partial<FooterConfig>>): FooterCon
 		if (typeof config.enabled === "boolean") merged.enabled = config.enabled;
 		if (Array.isArray(config.items)) merged.items = config.items.filter(isFooterItemId);
 		if (typeof config.separator === "string") merged.separator = config.separator;
+		if (typeof config.style === "string" && isFooterStyle(config.style)) merged.style = config.style;
 		if (typeof config.template === "string") merged.template = config.template;
 	}
 
@@ -297,6 +330,7 @@ function mergeFooterConfigs(...configs: Array<Partial<FooterConfig>>): FooterCon
 		enabled: merged.enabled ?? DEFAULT_FOOTER_CONFIG.enabled,
 		items: merged.items && merged.items.length > 0 ? merged.items : DEFAULT_FOOTER_CONFIG.items,
 		separator: merged.separator ?? DEFAULT_FOOTER_CONFIG.separator,
+		style: merged.style ?? DEFAULT_FOOTER_CONFIG.style,
 		template: merged.template,
 	};
 }
@@ -308,6 +342,7 @@ function normalizeFooterConfig(value: unknown): Partial<FooterConfig> {
 		enabled: typeof config.enabled === "boolean" ? config.enabled : undefined,
 		items: Array.isArray(config.items) ? config.items.filter(isFooterItemId) : undefined,
 		separator: typeof config.separator === "string" ? config.separator : undefined,
+		style: typeof config.style === "string" && isFooterStyle(config.style) ? config.style : undefined,
 		template: typeof config.template === "string" ? config.template : undefined,
 	};
 }
@@ -318,4 +353,8 @@ function isFooterItemId(value: unknown): value is FooterItemId {
 
 function isFooterPresetId(value: unknown): value is FooterPresetId {
 	return typeof value === "string" && value in FOOTER_PRESETS;
+}
+
+function isFooterStyle(value: unknown): value is FooterStyle {
+	return value === "plain" || value === "muted" || value === "cost";
 }

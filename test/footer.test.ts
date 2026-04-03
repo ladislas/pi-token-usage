@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	applyFooterTheme,
 	buildFooterStatus,
 	DEFAULT_FOOTER_CONFIG,
 	FOOTER_PRESETS,
@@ -10,9 +11,11 @@ import {
 	formatFooterTemplateVars,
 	parseFooterItems,
 	parseFooterPreset,
+	parseFooterStyle,
 	saveProjectFooterConfig,
 	writeProjectFooterConfig,
 } from "../src/footer";
+import { stripAnsi } from "../src/format";
 import type { UsageRecord } from "../src/types";
 
 const tempDirs: string[] = [];
@@ -63,7 +66,7 @@ describe("footer helpers", () => {
 			}),
 		];
 
-		expect(buildFooterStatus(records, "/tmp/project-a", DEFAULT_FOOTER_CONFIG)).toBe(
+		expect(stripAnsi(buildFooterStatus(records, "/tmp/project-a", DEFAULT_FOOTER_CONFIG)!)).toBe(
 			"Proj today $1.23  •  Total today $3.73",
 		);
 	});
@@ -86,11 +89,14 @@ describe("footer helpers", () => {
 		];
 
 		expect(
-			buildFooterStatus(records, "/tmp/project-a", {
-				enabled: true,
-				items: ["projectTodayTokens", "totalTodayTokens"],
-				separator: " | ",
-			}),
+			stripAnsi(
+				buildFooterStatus(records, "/tmp/project-a", {
+					enabled: true,
+					items: ["projectTodayTokens", "totalTodayTokens"],
+					separator: " | ",
+					style: "plain",
+				})!,
+			),
 		).toBe("Proj today 12K tok | Total today 82K tok");
 	});
 
@@ -114,12 +120,15 @@ describe("footer helpers", () => {
 		];
 
 		expect(
-			buildFooterStatus(records, "/tmp/project-a", {
-				enabled: true,
-				items: [],
-				separator: " || ",
-				template: "[project: {projectToday.cost} · {projectToday.tokens} tok]   [total: {totalToday.cost} · {totalToday.tokens} tok]",
-			}),
+			stripAnsi(
+				buildFooterStatus(records, "/tmp/project-a", {
+					enabled: true,
+					items: [],
+					separator: " || ",
+					style: "muted",
+					template: "[project: {projectToday.cost} · {projectToday.tokens} tok]   [total: {totalToday.cost} · {totalToday.tokens} tok]",
+				})!,
+			),
 		).toBe("[project: $1.23 · 12K tok]   [total: $3.73 · 82K tok]");
 	});
 
@@ -140,9 +149,36 @@ describe("footer helpers", () => {
 				enabled: true,
 				items: DEFAULT_FOOTER_CONFIG.items,
 				separator: DEFAULT_FOOTER_CONFIG.separator,
+				style: "plain",
 				template: "cost={projectToday.costRaw} tokens={projectToday.tokensRaw}",
 			}),
 		).toBe("cost=1.23 tokens=12345");
+	});
+
+	it("supports theme-based cost styling while keeping rendered text readable", () => {
+		const now = Date.now();
+		const records = [
+			record({
+				timestamp: now,
+				isoTimestamp: new Date(now).toISOString(),
+				project: "/tmp/project-a",
+				totalTokens: 12_345,
+				costTotal: 1.23,
+			}),
+		];
+
+		const output = buildFooterStatus(records, "/tmp/project-a", {
+			enabled: true,
+			items: ["projectTodaySummary"],
+			separator: " | ",
+			style: "cost",
+		});
+		const themed = applyFooterTheme(output!, "cost", {
+			fg: (name, text) => `<${name}>${text}</${name}>`,
+		});
+
+		expect(themed).toBe("<dim>Proj today </dim><warning>$1.23</warning><dim> / 12K tok</dim>");
+		expect(stripAnsi(output!)).toBe("Proj today $1.23 / 12K tok");
 	});
 
 	it("parses footer items and removes duplicates", () => {
@@ -162,18 +198,33 @@ describe("footer helpers", () => {
 		]);
 	});
 
-	it("formats config with template and presets", () => {
+	it("parses footer styles", () => {
+		expect(parseFooterStyle("plain")).toBe("plain");
+		expect(parseFooterStyle("muted")).toBe("muted");
+		expect(parseFooterStyle("cost")).toBe("cost");
+	});
+
+	it("applies muted theme styling", () => {
+		const themed = applyFooterTheme("hello", "muted", {
+			fg: (name, text) => `<${name}>${text}</${name}>`,
+		});
+		expect(themed).toBe("<dim>hello</dim>");
+	});
+
+	it("formats config with template, style and presets", () => {
 		const cwd = "/tmp/project-a";
 		const output = formatFooterConfig(
 			{
 				enabled: true,
 				items: ["projectTodaySummary"],
 				separator: " | ",
+				style: "cost",
 				template: "[project: {projectToday.cost}]",
 			},
 			cwd,
 		);
 
+		expect(output).toContain("Style: cost");
 		expect(output).toContain('Template: "[project: {projectToday.cost}]"');
 		expect(output).toContain("Presets: minimal, costs, tokens, summary, full");
 	});
@@ -191,6 +242,7 @@ describe("footer helpers", () => {
 			enabled: false,
 			items: ["totalTodaySummary"],
 			separator: " | ",
+			style: "plain",
 			template: "[total: {totalToday.summary}]",
 		});
 
@@ -198,6 +250,7 @@ describe("footer helpers", () => {
 			enabled: false,
 			items: ["totalTodaySummary"],
 			separator: " | ",
+			style: "plain",
 			template: "[total: {totalToday.summary}]",
 		});
 		expect(JSON.parse(readFileSync(join(cwd, ".pi-token-usage.json"), "utf-8"))).toEqual(config);
@@ -213,6 +266,7 @@ describe("footer helpers", () => {
 			enabled: true,
 			items: ["projectTodaySummary", "totalTodaySummary"],
 			separator: "  •  ",
+			style: "muted",
 			template: undefined,
 		});
 
@@ -221,6 +275,7 @@ describe("footer helpers", () => {
 			enabled: true,
 			items: ["projectTodaySummary", "totalTodaySummary"],
 			separator: "  •  ",
+			style: "muted",
 		});
 	});
 });
