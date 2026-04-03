@@ -513,26 +513,33 @@ function cmdUsageDays(n: number): string {
 	const byDay = aggregateByKey(recent, (r) => toDateStr(r.timestamp));
 	const sorted = [...byDay.entries()].sort((a, b) => b[0].localeCompare(a[0]));
 
-	const lifetime = emptyTotals();
-	for (const r of recent) addToTotals(lifetime, r);
+	const total = emptyTotals();
+	for (const r of recent) addToTotals(total, r);
+
+	const dayRows = sorted.map(([first, totals]) => ({ first, totals }));
+	const modelRows = [...aggregateByKey(recent, (r) => `${r.provider}/${r.model}`).entries()].map(([first, totals]) => ({
+		first: `  ${first}`,
+		totals,
+	}));
+	const widths = computeWidths("Day", [...dayRows, ...modelRows, { first: "Total", totals: total }]);
 
 	const lines: string[] = [];
 	lines.push(`${B}${CYAN}── Daily Usage (${n} days) ──${RST}`);
-	lines.push(renderHeader(12));
+	lines.push(renderHeader("Day", widths));
 
 	for (const [day, t] of sorted) {
-		lines.push(renderTotalsLine(day, t, 12));
+		lines.push(renderTotalsLine(day, t, widths));
 
-		// Per-model breakdown for each day
 		const dayRecords = recent.filter((r) => toDateStr(r.timestamp) === day);
-		const modelBreakdown = renderModelBreakdown(dayRecords, "      ");
-		if (modelBreakdown.length > 1) {
-			lines.push(...modelBreakdown);
+		const byModel = aggregateByKey(dayRecords, (r) => `${r.provider}/${r.model}`);
+		const sortedModels = [...byModel.entries()].sort((a, b) => b[1].costTotal - a[1].costTotal);
+		for (const [model, modelTotals] of sortedModels) {
+			lines.push(renderTotalsLine(`  ${model}`, modelTotals, widths));
 		}
 	}
 
 	lines.push("");
-	lines.push(`${B}${renderTotalsLine("Total", lifetime, 12)}${RST}`);
+	lines.push(`${B}${renderTotalsLine("Total", total, widths)}${RST}`);
 
 	return lines.join("\n");
 }
@@ -544,26 +551,33 @@ function cmdUsageMonths(): string {
 	const byMonth = aggregateByKey(records, (r) => toMonthStr(r.timestamp));
 	const sorted = [...byMonth.entries()].sort((a, b) => b[0].localeCompare(a[0]));
 
-	const lifetime = emptyTotals();
-	for (const r of records) addToTotals(lifetime, r);
+	const total = emptyTotals();
+	for (const r of records) addToTotals(total, r);
+
+	const monthRows = sorted.map(([first, totals]) => ({ first, totals }));
+	const modelRows = [...aggregateByKey(records, (r) => `${r.provider}/${r.model}`).entries()].map(([first, totals]) => ({
+		first: `  ${first}`,
+		totals,
+	}));
+	const widths = computeWidths("Month", [...monthRows, ...modelRows, { first: "Total", totals: total }]);
 
 	const lines: string[] = [];
 	lines.push(`${B}${CYAN}── Monthly Usage ──${RST}`);
-	lines.push(renderHeader(10));
+	lines.push(renderHeader("Month", widths));
 
 	for (const [month, t] of sorted) {
-		lines.push(renderTotalsLine(month, t, 10));
+		lines.push(renderTotalsLine(month, t, widths));
 
-		// Per-model breakdown for each month
 		const monthRecords = records.filter((r) => toMonthStr(r.timestamp) === month);
-		const modelBreakdown = renderModelBreakdown(monthRecords, "      ");
-		if (modelBreakdown.length > 1) {
-			lines.push(...modelBreakdown);
+		const byModel = aggregateByKey(monthRecords, (r) => `${r.provider}/${r.model}`);
+		const sortedModels = [...byModel.entries()].sort((a, b) => b[1].costTotal - a[1].costTotal);
+		for (const [model, modelTotals] of sortedModels) {
+			lines.push(renderTotalsLine(`  ${model}`, modelTotals, widths));
 		}
 	}
 
 	lines.push("");
-	lines.push(`${B}${renderTotalsLine("Total", lifetime, 10)}${RST}`);
+	lines.push(`${B}${renderTotalsLine("Total", total, widths)}${RST}`);
 
 	return lines.join("\n");
 }
