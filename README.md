@@ -16,7 +16,7 @@ Pi already shows token usage per session. `pi-token-usage` adds a cross-session 
 - **Per-project breakdown** — usage grouped by working directory
 - **Per-session breakdown** — top sessions by cost
 - **Live footer status** — today's project and total consumption in the footer
-- **Customizable footer** — enable/disable it, choose metrics, labels, separators, and presets
+- **Customizable footer** — enable/disable it, choose metrics, separators, presets, or a full template override
 - **Fast refresh** — clear cached scan results and rescan session files
 - **Simple commands** — query usage directly from pi with `/usage ...`
 
@@ -48,8 +48,9 @@ pi install git:github.com/ladislas/pi-token-usage
 /usage footer items …             — choose footer items to show
 /usage footer preset <name>       — apply a footer ordering preset
 /usage footer separator <text>    — set the footer separator
-/usage footer label <item> <text> — set a custom label for one item
-/usage footer unlabel <item>      — remove a custom item label
+/usage footer template <text>     — override the full footer with a template
+/usage footer untemplate          — remove the footer template override
+/usage footer vars                — show available template variables
 /usage footer reset               — remove project footer config
 /usage refresh         — clear cache and rescan session files
 /usage help            — show command help
@@ -93,8 +94,9 @@ You can customize it per project:
 /usage footer preset summary
 /usage footer preset full
 /usage footer separator |
-/usage footer label projectTodaySummary Mine
-/usage footer unlabel projectTodaySummary
+/usage footer template [project: {projectToday.cost} · {projectToday.tokens} tok]   [total: {totalToday.cost} · {totalToday.tokens} tok]
+/usage footer untemplate
+/usage footer vars
 /usage footer reset
 ```
 
@@ -112,6 +114,28 @@ Available presets:
 - `tokens`
 - `summary`
 - `full`
+
+Template variables use formatted values by default, with `Raw` variants for unformatted numbers.
+
+Examples:
+- `{projectToday.cost}` → `$2.56`
+- `{projectToday.costRaw}` → `2.56`
+- `{projectToday.tokens}` → `3.5M`
+- `{projectToday.tokensRaw}` → `3521456`
+- `{projectToday.summary}` → `$2.56 / 3.5M tok`
+- same shape also exists for `totalToday`
+
+Exact prompt example:
+
+```text
+/usage footer template [project: {projectToday.cost} · {projectToday.tokens} tok]   [total: {totalToday.cost} · {totalToday.tokens} tok]
+```
+
+Which renders like:
+
+```text
+[project: $2.56 · 3.5M tok]   [total: $12.50 · 32.3M tok]
+```
 
 Project-specific footer settings are stored in:
 

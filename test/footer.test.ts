@@ -7,6 +7,7 @@ import {
 	DEFAULT_FOOTER_CONFIG,
 	FOOTER_PRESETS,
 	formatFooterConfig,
+	formatFooterTemplateVars,
 	parseFooterItems,
 	parseFooterPreset,
 	saveProjectFooterConfig,
@@ -89,12 +90,11 @@ describe("footer helpers", () => {
 				enabled: true,
 				items: ["projectTodayTokens", "totalTodayTokens"],
 				separator: " | ",
-				labels: {},
 			}),
 		).toBe("Proj today 12K tok | Total today 82K tok");
 	});
 
-	it("supports combined summary items and custom labels", () => {
+	it("supports a global template with formatted values by default", () => {
 		const now = Date.now();
 		const records = [
 			record({
@@ -116,11 +116,33 @@ describe("footer helpers", () => {
 		expect(
 			buildFooterStatus(records, "/tmp/project-a", {
 				enabled: true,
-				items: ["projectTodaySummary", "totalTodaySummary"],
+				items: [],
 				separator: " || ",
-				labels: { projectTodaySummary: "Here", totalTodaySummary: "All" },
+				template: "[project: {projectToday.cost} · {projectToday.tokens} tok]   [total: {totalToday.cost} · {totalToday.tokens} tok]",
 			}),
-		).toBe("Here $1.23 / 12K tok || All $3.73 / 82K tok");
+		).toBe("[project: $1.23 · 12K tok]   [total: $3.73 · 82K tok]");
+	});
+
+	it("supports raw template variables", () => {
+		const now = Date.now();
+		const records = [
+			record({
+				timestamp: now,
+				isoTimestamp: new Date(now).toISOString(),
+				project: "/tmp/project-a",
+				totalTokens: 12345,
+				costTotal: 1.23,
+			}),
+		];
+
+		expect(
+			buildFooterStatus(records, "/tmp/project-a", {
+				enabled: true,
+				items: DEFAULT_FOOTER_CONFIG.items,
+				separator: DEFAULT_FOOTER_CONFIG.separator,
+				template: "cost={projectToday.costRaw} tokens={projectToday.tokensRaw}",
+			}),
+		).toBe("cost=1.23 tokens=12345");
 	});
 
 	it("parses footer items and removes duplicates", () => {
@@ -140,20 +162,27 @@ describe("footer helpers", () => {
 		]);
 	});
 
-	it("formats config with labels and presets", () => {
+	it("formats config with template and presets", () => {
 		const cwd = "/tmp/project-a";
 		const output = formatFooterConfig(
 			{
 				enabled: true,
 				items: ["projectTodaySummary"],
 				separator: " | ",
-				labels: { projectTodaySummary: "Mine" },
+				template: "[project: {projectToday.cost}]",
 			},
 			cwd,
 		);
 
-		expect(output).toContain("Custom labels: projectTodaySummary=\"Mine\"");
+		expect(output).toContain('Template: "[project: {projectToday.cost}]"');
 		expect(output).toContain("Presets: minimal, costs, tokens, summary, full");
+	});
+
+	it("lists template variables", () => {
+		const output = formatFooterTemplateVars();
+		expect(output).toContain("{projectToday.cost}");
+		expect(output).toContain("{projectToday.costRaw}");
+		expect(output).toContain("{totalToday.summary}");
 	});
 
 	it("writes project footer config", () => {
@@ -162,32 +191,36 @@ describe("footer helpers", () => {
 			enabled: false,
 			items: ["totalTodaySummary"],
 			separator: " | ",
-			labels: { totalTodaySummary: "Everything" },
+			template: "[total: {totalToday.summary}]",
 		});
 
 		expect(config).toEqual({
 			enabled: false,
 			items: ["totalTodaySummary"],
 			separator: " | ",
-			labels: { totalTodaySummary: "Everything" },
+			template: "[total: {totalToday.summary}]",
 		});
 		expect(JSON.parse(readFileSync(join(cwd, ".pi-token-usage.json"), "utf-8"))).toEqual(config);
 	});
 
-	it("can overwrite labels to remove an existing label", () => {
+	it("can overwrite config to remove an existing template", () => {
 		const cwd = makeTempDir();
 		saveProjectFooterConfig(cwd, {
-			labels: { projectTodaySummary: "Mine", totalTodaySummary: "Everything" },
+			template: "[project: {projectToday.cost}]",
 		});
 
 		const config = writeProjectFooterConfig(cwd, {
 			enabled: true,
 			items: ["projectTodaySummary", "totalTodaySummary"],
 			separator: "  •  ",
-			labels: { totalTodaySummary: "Everything" },
+			template: undefined,
 		});
 
-		expect(config.labels).toEqual({ totalTodaySummary: "Everything" });
-		expect(JSON.parse(readFileSync(join(cwd, ".pi-token-usage.json"), "utf-8"))).toEqual(config);
+		expect(config.template).toBeUndefined();
+		expect(JSON.parse(readFileSync(join(cwd, ".pi-token-usage.json"), "utf-8"))).toEqual({
+			enabled: true,
+			items: ["projectTodaySummary", "totalTodaySummary"],
+			separator: "  •  ",
+		});
 	});
 });

@@ -22,7 +22,23 @@ export interface FooterConfig {
 	enabled: boolean;
 	items: FooterItemId[];
 	separator: string;
-	labels: Partial<Record<FooterItemId, string>>;
+	template?: string;
+}
+
+interface FooterMetricSet {
+	cost: string;
+	costRaw: string;
+	tokens: string;
+	tokensRaw: string;
+	input: string;
+	inputRaw: string;
+	output: string;
+	outputRaw: string;
+	cacheRead: string;
+	cacheReadRaw: string;
+	cacheWrite: string;
+	cacheWriteRaw: string;
+	summary: string;
 }
 
 export const FOOTER_PRESETS: Record<FooterPresetId, FooterItemId[]> = {
@@ -37,7 +53,6 @@ export const DEFAULT_FOOTER_CONFIG: FooterConfig = {
 	enabled: true,
 	items: FOOTER_PRESETS.minimal,
 	separator: "  •  ",
-	labels: {},
 };
 
 const FOOTER_CONFIG_FILENAME = ".pi-token-usage.json";
@@ -50,6 +65,35 @@ const DEFAULT_ITEM_LABELS: Record<FooterItemId, string> = {
 	projectTodaySummary: "Proj today",
 	totalTodaySummary: "Total today",
 };
+
+const FOOTER_TEMPLATE_VARS = [
+	"{projectToday.cost}",
+	"{projectToday.costRaw}",
+	"{projectToday.tokens}",
+	"{projectToday.tokensRaw}",
+	"{projectToday.input}",
+	"{projectToday.inputRaw}",
+	"{projectToday.output}",
+	"{projectToday.outputRaw}",
+	"{projectToday.cacheRead}",
+	"{projectToday.cacheReadRaw}",
+	"{projectToday.cacheWrite}",
+	"{projectToday.cacheWriteRaw}",
+	"{projectToday.summary}",
+	"{totalToday.cost}",
+	"{totalToday.costRaw}",
+	"{totalToday.tokens}",
+	"{totalToday.tokensRaw}",
+	"{totalToday.input}",
+	"{totalToday.inputRaw}",
+	"{totalToday.output}",
+	"{totalToday.outputRaw}",
+	"{totalToday.cacheRead}",
+	"{totalToday.cacheReadRaw}",
+	"{totalToday.cacheWrite}",
+	"{totalToday.cacheWriteRaw}",
+	"{totalToday.summary}",
+] as const;
 
 export function getGlobalFooterConfigPath(): string {
 	return join(homedir(), ".pi", "agent", FOOTER_CONFIG_FILENAME);
@@ -114,24 +158,45 @@ export function parseFooterPreset(raw: string): FooterPresetId {
 }
 
 export function formatFooterConfig(config: FooterConfig, cwd: string): string {
-	const customLabels = Object.entries(config.labels)
-		.filter(([, value]) => typeof value === "string" && value.length > 0)
-		.map(([key, value]) => `${key}=${JSON.stringify(value)}`);
-
 	return [
 		`Footer: ${config.enabled ? "enabled" : "disabled"}`,
+		`Template: ${config.template ? JSON.stringify(config.template) : "(none)"}`,
 		`Items: ${config.items.join(", ") || "(none)"}`,
 		`Separator: ${JSON.stringify(config.separator)}`,
-		`Custom labels: ${customLabels.length > 0 ? customLabels.join(", ") : "(none)"}`,
 		`Presets: ${Object.keys(FOOTER_PRESETS).join(", ")}`,
 		`Project config: ${getProjectFooterConfigPath(cwd)}`,
 		`Global config: ${getGlobalFooterConfigPath()}`,
 		`Available items: ${FOOTER_ITEM_IDS.join(", ")}`,
+		`Template vars: ${FOOTER_TEMPLATE_VARS.join(", ")}`,
+	].join("\n");
+}
+
+export function formatFooterTemplateVars(): string {
+	return [
+		"Footer template variables:",
+		"  Project today:",
+		"    {projectToday.cost}       formatted cost, e.g. $2.56",
+		"    {projectToday.costRaw}    raw cost number",
+		"    {projectToday.tokens}     formatted total tokens, e.g. 3.5M",
+		"    {projectToday.tokensRaw}  raw total tokens",
+		"    {projectToday.input} / {projectToday.inputRaw}",
+		"    {projectToday.output} / {projectToday.outputRaw}",
+		"    {projectToday.cacheRead} / {projectToday.cacheReadRaw}",
+		"    {projectToday.cacheWrite} / {projectToday.cacheWriteRaw}",
+		"    {projectToday.summary}    formatted summary, e.g. $2.56 / 3.5M tok",
+		"  Total today:",
+		"    {totalToday.cost} / {totalToday.costRaw}",
+		"    {totalToday.tokens} / {totalToday.tokensRaw}",
+		"    {totalToday.input} / {totalToday.inputRaw}",
+		"    {totalToday.output} / {totalToday.outputRaw}",
+		"    {totalToday.cacheRead} / {totalToday.cacheReadRaw}",
+		"    {totalToday.cacheWrite} / {totalToday.cacheWriteRaw}",
+		"    {totalToday.summary}",
 	].join("\n");
 }
 
 export function buildFooterStatus(records: UsageRecord[], cwd: string, config: FooterConfig): string | undefined {
-	if (!config.enabled || config.items.length === 0) return undefined;
+	if (!config.enabled) return undefined;
 
 	const todayMs = todayStart();
 	const todayProject = emptyTotals();
@@ -143,35 +208,66 @@ export function buildFooterStatus(records: UsageRecord[], cwd: string, config: F
 		if (record.project === cwd) addToTotals(todayProject, record);
 	}
 
-	const parts = config.items.map((item) => formatFooterItem(item, todayProject, todayTotal, config.labels[item]));
+	if (config.template && config.template.length > 0) {
+		return renderFooterTemplate(config.template, todayProject, todayTotal);
+	}
+
+	if (config.items.length === 0) return undefined;
+	const parts = config.items.map((item) => formatFooterItem(item, todayProject, todayTotal));
 	return parts.join(config.separator);
 }
 
-export function getFooterLabel(item: FooterItemId, config: FooterConfig): string {
-	return config.labels[item] || DEFAULT_ITEM_LABELS[item];
-}
-
-function formatFooterItem(
-	item: FooterItemId,
-	todayProject: ReturnType<typeof emptyTotals>,
-	todayTotal: ReturnType<typeof emptyTotals>,
-	customLabel?: string,
-): string {
-	const label = customLabel || DEFAULT_ITEM_LABELS[item];
+function formatFooterItem(item: FooterItemId, todayProject: ReturnType<typeof emptyTotals>, todayTotal: ReturnType<typeof emptyTotals>): string {
 	switch (item) {
 		case "projectTodayCost":
-			return `${label} ${fmtCost(todayProject.costTotal)}`;
+			return `${DEFAULT_ITEM_LABELS[item]} ${fmtCost(todayProject.costTotal)}`;
 		case "totalTodayCost":
-			return `${label} ${fmtCost(todayTotal.costTotal)}`;
+			return `${DEFAULT_ITEM_LABELS[item]} ${fmtCost(todayTotal.costTotal)}`;
 		case "projectTodayTokens":
-			return `${label} ${fmtTokens(todayProject.totalTokens)} tok`;
+			return `${DEFAULT_ITEM_LABELS[item]} ${fmtTokens(todayProject.totalTokens)} tok`;
 		case "totalTodayTokens":
-			return `${label} ${fmtTokens(todayTotal.totalTokens)} tok`;
+			return `${DEFAULT_ITEM_LABELS[item]} ${fmtTokens(todayTotal.totalTokens)} tok`;
 		case "projectTodaySummary":
-			return `${label} ${fmtCost(todayProject.costTotal)} / ${fmtTokens(todayProject.totalTokens)} tok`;
+			return `${DEFAULT_ITEM_LABELS[item]} ${formatSummary(todayProject)}`;
 		case "totalTodaySummary":
-			return `${label} ${fmtCost(todayTotal.costTotal)} / ${fmtTokens(todayTotal.totalTokens)} tok`;
+			return `${DEFAULT_ITEM_LABELS[item]} ${formatSummary(todayTotal)}`;
 	}
+}
+
+function renderFooterTemplate(template: string, todayProject: ReturnType<typeof emptyTotals>, todayTotal: ReturnType<typeof emptyTotals>): string {
+	const values = {
+		projectToday: createMetricSet(todayProject),
+		totalToday: createMetricSet(todayTotal),
+	};
+
+	return template.replace(/\{([a-zA-Z]+)\.([a-zA-Z]+)\}/g, (match, scope, field) => {
+		const source = values[scope as keyof typeof values];
+		if (!source) return match;
+		const value = source[field as keyof FooterMetricSet];
+		return value ?? match;
+	});
+}
+
+function createMetricSet(totals: ReturnType<typeof emptyTotals>): FooterMetricSet {
+	return {
+		cost: fmtCost(totals.costTotal),
+		costRaw: String(totals.costTotal),
+		tokens: fmtTokens(totals.totalTokens),
+		tokensRaw: String(totals.totalTokens),
+		input: fmtTokens(totals.input),
+		inputRaw: String(totals.input),
+		output: fmtTokens(totals.output),
+		outputRaw: String(totals.output),
+		cacheRead: fmtTokens(totals.cacheRead),
+		cacheReadRaw: String(totals.cacheRead),
+		cacheWrite: fmtTokens(totals.cacheWrite),
+		cacheWriteRaw: String(totals.cacheWrite),
+		summary: formatSummary(totals),
+	};
+}
+
+function formatSummary(totals: ReturnType<typeof emptyTotals>): string {
+	return `${fmtCost(totals.costTotal)} / ${fmtTokens(totals.totalTokens)} tok`;
 }
 
 function writeFooterConfigFile(path: string, config: FooterConfig): void {
@@ -189,19 +285,19 @@ function readFooterConfigFile(path: string): Partial<FooterConfig> {
 }
 
 function mergeFooterConfigs(...configs: Array<Partial<FooterConfig>>): FooterConfig {
-	const merged: Partial<FooterConfig> = { labels: {} };
+	const merged: Partial<FooterConfig> = {};
 	for (const config of configs) {
 		if (typeof config.enabled === "boolean") merged.enabled = config.enabled;
 		if (Array.isArray(config.items)) merged.items = config.items.filter(isFooterItemId);
 		if (typeof config.separator === "string") merged.separator = config.separator;
-		if (config.labels) merged.labels = { ...merged.labels, ...normalizeLabels(config.labels) };
+		if (typeof config.template === "string") merged.template = config.template;
 	}
 
 	return {
 		enabled: merged.enabled ?? DEFAULT_FOOTER_CONFIG.enabled,
 		items: merged.items && merged.items.length > 0 ? merged.items : DEFAULT_FOOTER_CONFIG.items,
 		separator: merged.separator ?? DEFAULT_FOOTER_CONFIG.separator,
-		labels: merged.labels ?? {},
+		template: merged.template,
 	};
 }
 
@@ -212,17 +308,8 @@ function normalizeFooterConfig(value: unknown): Partial<FooterConfig> {
 		enabled: typeof config.enabled === "boolean" ? config.enabled : undefined,
 		items: Array.isArray(config.items) ? config.items.filter(isFooterItemId) : undefined,
 		separator: typeof config.separator === "string" ? config.separator : undefined,
-		labels: normalizeLabels(config.labels),
+		template: typeof config.template === "string" ? config.template : undefined,
 	};
-}
-
-function normalizeLabels(value: unknown): Partial<Record<FooterItemId, string>> {
-	if (!value || typeof value !== "object") return {};
-	const labels: Partial<Record<FooterItemId, string>> = {};
-	for (const [key, label] of Object.entries(value as Record<string, unknown>)) {
-		if (isFooterItemId(key) && typeof label === "string" && label.length > 0) labels[key] = label;
-	}
-	return labels;
 }
 
 function isFooterItemId(value: unknown): value is FooterItemId {
