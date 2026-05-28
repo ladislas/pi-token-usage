@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UsageRecord } from "../src/types";
 
 const scanAllSessions = vi.fn<() => UsageRecord[]>();
@@ -41,7 +41,14 @@ describe("usage command rendering", () => {
 		refreshCachedRecords.mockReset();
 	});
 
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	it("keeps daily rows vertically aligned for very long model names", () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-04-08T12:00:00.000Z"));
+
 		scanAllSessions.mockReturnValue([
 			record({
 				timestamp: new Date("2026-04-02T10:00:00.000Z").getTime(),
