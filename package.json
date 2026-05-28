@@ -1,6 +1,6 @@
 {
   "name": "pi-token-usage",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Pi extension for lifetime token usage tracking and cost analytics across all sessions",
   "keywords": [
     "pi",
