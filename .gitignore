@@ -3,3 +3,4 @@ dist/
 *.tgz
 TODO.md
 .pi/
+.pi-token-usage.json
