@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import {
 	cmdUsageDays,
 	cmdUsageHelp,
@@ -12,6 +13,7 @@ import {
 import {
 	applyFooterTheme,
 	buildFooterStatus,
+	FOOTER_ITEM_IDS,
 	FOOTER_PRESETS,
 	formatFooterConfig,
 	formatFooterTemplateVars,
@@ -56,6 +58,114 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerCommand("usage", {
 		description: "Token usage analytics — lifetime, by model, day, month, session, project",
+		getArgumentCompletions: (prefix: string): AutocompleteItem[] | null => {
+			const trimmed = prefix.trim();
+			const parts = trimmed.length > 0 ? trimmed.split(/\s+/) : [];
+			const hasTrailingSpace = trimmed.length > 0 && prefix.endsWith(" ");
+
+			// Top-level subcommands
+			const topLevel: AutocompleteItem[] = [
+				{ value: "models", label: "models", description: "Breakdown by provider/model" },
+				{ value: "days", label: "days", description: "Daily rollup for last N days (default: 7)" },
+				{ value: "months", label: "months", description: "Monthly rollup" },
+				{ value: "sessions", label: "sessions", description: "Top N sessions by cost (default: 20)" },
+				{ value: "projects", label: "projects", description: "Breakdown by project" },
+				{ value: "footer", label: "footer", description: "Show or customize footer status" },
+				{ value: "refresh", label: "refresh", description: "Clear cache and rescan session files" },
+				{ value: "help", label: "help", description: "Show command help" },
+			];
+
+			// Still typing the first word
+			if (parts.length === 0 || (parts.length === 1 && !hasTrailingSpace)) {
+				const current = parts[0] ?? "";
+				const filtered = topLevel.filter((i) => i.value.startsWith(current));
+				return filtered.length > 0 ? filtered : null;
+			}
+
+			const first = parts[0];
+
+			// Footer subcommands (nested completion)
+			if (first === "footer") {
+				const footerSubs: AutocompleteItem[] = [
+					{ value: "show", label: "show", description: "Show footer config" },
+					{ value: "on", label: "on", description: "Enable footer" },
+					{ value: "enable", label: "enable", description: "Enable footer" },
+					{ value: "off", label: "off", description: "Disable footer" },
+					{ value: "disable", label: "disable", description: "Disable footer" },
+					{ value: "items", label: "items", description: "Set footer items (comma/space separated)" },
+					{ value: "preset", label: "preset", description: "Apply a footer preset" },
+					{ value: "separator", label: "separator", description: "Set footer separator text" },
+					{ value: "style", label: "style", description: "Set footer styling: plain, muted, cost" },
+					{ value: "template", label: "template", description: "Override footer with a custom template" },
+					{ value: "untemplate", label: "untemplate", description: "Remove footer template override" },
+					{ value: "vars", label: "vars", description: "Show available template variables" },
+					{ value: "reset", label: "reset", description: "Remove project footer config" },
+				];
+
+				if (parts.length === 2 && !hasTrailingSpace) {
+					const current = parts[1] ?? "";
+					const filtered = footerSubs.filter((i) => i.value.startsWith(current));
+					return filtered.length > 0 ? filtered : null;
+				}
+
+				if (parts.length >= 2) {
+					const second = parts[1];
+
+					// /usage footer preset <name>
+					if (second === "preset") {
+						const current = parts[2] ?? "";
+						const presets = Object.keys(FOOTER_PRESETS);
+						const filtered = presets
+							.filter((p) => p.startsWith(current))
+							.map((p) => ({ value: p, label: p }));
+						return filtered.length > 0 ? filtered : null;
+					}
+
+					// /usage footer style <name>
+					if (second === "style") {
+						const current = parts[2] ?? "";
+						const styles = ["plain", "muted", "cost"];
+						const filtered = styles
+							.filter((s) => s.startsWith(current))
+							.map((s) => ({ value: s, label: s }));
+						return filtered.length > 0 ? filtered : null;
+					}
+
+					// /usage footer items <name>
+					if (second === "items") {
+						const current = parts[2] ?? "";
+						const filtered = [...FOOTER_ITEM_IDS]
+							.filter((i) => i.startsWith(current))
+							.map((i) => ({ value: i, label: i }));
+						return filtered.length > 0 ? filtered : null;
+					}
+				}
+
+				return null;
+			}
+
+			// /usage days <N>
+			if (first === "days") {
+				const current = parts[1] ?? "";
+				const nums = ["7", "14", "30"];
+				const filtered = nums
+					.filter((n) => n.startsWith(current))
+					.map((n) => ({ value: n, label: n }));
+				return filtered.length > 0 ? filtered : null;
+			}
+
+			// /usage sessions <N>
+			if (first === "sessions") {
+				const current = parts[1] ?? "";
+				const nums = ["10", "20", "50"];
+				const filtered = nums
+					.filter((n) => n.startsWith(current))
+					.map((n) => ({ value: n, label: n }));
+				return filtered.length > 0 ? filtered : null;
+			}
+
+			return null;
+		},
 		handler: async (args, ctx) => {
 			const trimmed = (args ?? "").trim();
 			const parts = trimmed.length > 0 ? trimmed.split(/\s+/) : [];
