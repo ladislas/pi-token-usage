@@ -3,16 +3,17 @@ import { fmtCost } from "./format";
 import { scanAllSessions } from "./scan";
 import { toDateStr } from "./dates";
 
-// GitHub-style contribution heatmap colors (truecolor ANSI foreground)
+// GitHub-style contribution heatmap colors (truecolor ANSI background)
 const LEVEL_COLORS = [
-	"\x1b[38;2;22;27;34m",   // 0: #161b22 — no activity / very dim
-	"\x1b[38;2;14;68;41m",   // 1: #0e4429 — light
-	"\x1b[38;2;0;109;50m",   // 2: #006d32 — medium-light
-	"\x1b[38;2;38;166;65m",  // 3: #26a641 — medium
-	"\x1b[38;2;57;211;83m",  // 4: #39d353 — heavy
+	"\x1b[48;2;22;27;34m",   // 0: #161b22 — no activity / very dim
+	"\x1b[48;2;14;68;41m",   // 1: #0e4429 — light
+	"\x1b[48;2;0;109;50m",   // 2: #006d32 — medium-light
+	"\x1b[48;2;38;166;65m",  // 3: #26a641 — medium
+	"\x1b[48;2;57;211;83m",  // 4: #39d353 — heavy
 ];
 
-const CELL = "█";
+const CELL = " ";
+const GAP = " "; // spacer between cells for the square look
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -27,7 +28,7 @@ function getLevel(value: number, maxValue: number): number {
 }
 
 function coloredCell(level: number): string {
-	return `${LEVEL_COLORS[level]}${CELL}${RST}`;
+	return `${LEVEL_COLORS[level]}${CELL}${RST}${GAP}`;
 }
 
 /**
@@ -101,10 +102,6 @@ export function cmdUsageHeatmap(n: number = 365): string {
 		weeks.push(info);
 	}
 
-	// Mon/Jan 1st is a special case: if it's also the first day in the grid,
-	// the label gets placed at week 0.
-	// If gridStart is before Jan 1st, the label on Jan 1st's week still works.
-
 	// --- Render ---
 	const lines: string[] = [];
 
@@ -112,18 +109,18 @@ export function cmdUsageHeatmap(n: number = 365): string {
 	lines.push(`${D}Last ${n} days  ·  daily cost by ${fmtCost(maxDaily)} max${RST}`);
 	lines.push("");
 
-	// Month label row
+	// Month label row — each column is now 2 chars (cell + gap)
 	{
-		let monthRow = new Array<string>(numWeeks).fill(" ");
+		const monthRow = new Array<string>(numWeeks * 2).fill(" ");
 		for (let w = 0; w < numWeeks; w++) {
 			const label = weeks[w].monthLabel;
 			if (label) {
-				for (let c = 0; c < label.length && w + c < numWeeks; c++) {
-					monthRow[w + c] = label[c];
+				const offset = w * 2;
+				for (let c = 0; c < label.length && offset + c < numWeeks * 2; c++) {
+					monthRow[offset + c] = label[c];
 				}
 			}
 		}
-		// Left-pad to align with day label column
 		lines.push(`      ${monthRow.join("")}`);
 	}
 
@@ -135,16 +132,14 @@ export function cmdUsageHeatmap(n: number = 365): string {
 			const level = getLevel(week.cells[d], maxDaily);
 			row += coloredCell(level);
 		}
-		// Only show day labels on rows that are visible
-		// (all 7 are shown for completeness, but label all)
 		lines.push(row);
 	}
 
-	// Legend row
+	// Legend row — coloredCell already includes trailing gap, so join without extra
 	lines.push("");
 	{
-		const legendCells = [0, 1, 2, 3, 4].map((l) => coloredCell(l)).join(" ");
-		lines.push(`  Less  ${legendCells}  More`);
+		const legendCells = [0, 1, 2, 3, 4].map((l) => coloredCell(l)).join("");
+		lines.push(`  Less  ${legendCells} More`);
 	}
 	// Cost scale
 	if (maxDaily > 0) {
