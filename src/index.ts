@@ -10,6 +10,7 @@ import {
 	cmdUsageSummary,
 	refreshUsageData,
 } from "./commands";
+import { cmdUsageHeatmap } from "./heatmap";
 import {
 	applyFooterTheme,
 	buildFooterStatus,
@@ -37,6 +38,7 @@ import { refreshCachedRecords, scanAllSessions } from "./scan";
  *   /usage days [N]     — Daily rollup for last N days (default: 7)
  *   /usage months       — Monthly rollup
  *   /usage projects     — Breakdown by project
+ *   /usage heatmap [N]  — GitHub-style heatmap of daily cost (default: 365)
  *   /usage footer       — Show or customize footer status
  *   /usage refresh      — Force rescan
  */
@@ -57,7 +59,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("usage", {
-		description: "Token usage analytics — lifetime, by model, day, month, session, project",
+		description: "Token usage analytics — lifetime, by model, day, month, session, project, heatmap",
 		getArgumentCompletions: (prefix: string): AutocompleteItem[] | null => {
 			const trimmed = prefix.trim();
 			const parts = trimmed.length > 0 ? trimmed.split(/\s+/) : [];
@@ -65,6 +67,7 @@ export default function (pi: ExtensionAPI) {
 
 			// Top-level subcommands
 			const topLevel: AutocompleteItem[] = [
+				{ value: "heatmap", label: "heatmap", description: "GitHub-style contribution heatmap of daily cost" },
 				{ value: "models", label: "models", description: "Breakdown by provider/model" },
 				{ value: "days", label: "days", description: "Daily rollup for last N days (default: 7)" },
 				{ value: "months", label: "months", description: "Monthly rollup" },
@@ -84,7 +87,18 @@ export default function (pi: ExtensionAPI) {
 
 			const first = parts[0];
 
-			// Footer subcommands (nested completion)
+			// /usage heatmap <N>
+			if (first === "heatmap") {
+				if (!hasTrailingSpace && parts.length === 1) return null;
+				const current = parts[1] ?? "";
+				const nums = ["30", "90", "180", "365"];
+				const filtered = nums
+					.filter((n) => n.startsWith(current))
+					.map((n) => ({ value: n, label: n }));
+				return filtered.length > 0 ? filtered : null;
+			}
+
+			// Footer subcommands
 			if (first === "footer") {
 				const footerSubs: AutocompleteItem[] = [
 					{ value: "show", label: "show", description: "Show footer config" },
@@ -111,7 +125,6 @@ export default function (pi: ExtensionAPI) {
 				if (parts.length >= 2) {
 					const second = parts[1];
 
-					// /usage footer preset <name>
 					if (second === "preset") {
 						const current = parts[2] ?? "";
 						const presets = Object.keys(FOOTER_PRESETS);
@@ -121,7 +134,6 @@ export default function (pi: ExtensionAPI) {
 						return filtered.length > 0 ? filtered : null;
 					}
 
-					// /usage footer style <name>
 					if (second === "style") {
 						const current = parts[2] ?? "";
 						const styles = ["plain", "muted", "cost"];
@@ -131,7 +143,6 @@ export default function (pi: ExtensionAPI) {
 						return filtered.length > 0 ? filtered : null;
 					}
 
-					// /usage footer items <name>
 					if (second === "items") {
 						const current = parts[2] ?? "";
 						const filtered = [...FOOTER_ITEM_IDS]
@@ -190,6 +201,11 @@ export default function (pi: ExtensionAPI) {
 				case "months":
 					output = cmdUsageMonths();
 					break;
+				case "heatmap": {
+					const n = parseInt(parts[1]) || 365;
+					output = cmdUsageHeatmap(n);
+					break;
+				}
 				case "sessions": {
 					const n = parseInt(parts[1]) || 20;
 					output = cmdUsageSessions(n);

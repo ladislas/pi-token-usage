@@ -320,6 +320,7 @@ export function cmdUsageHelp(): string {
 		`  ${B}/usage months${RST}                         Monthly rollup`,
 		`  ${B}/usage sessions [N]${RST}                   Top N sessions by cost (default: 20)`,
 		`  ${B}/usage projects${RST}                       Breakdown by project`,
+		`  ${B}/usage heatmap [N]${RST}                    GitHub-style heatmap of daily cost (default: 365 days)`,
 		`  ${B}/usage footer${RST}                         Show footer config and available items`,
 		`  ${B}/usage footer on|off${RST}                  Enable or disable the footer status`,
 		`  ${B}/usage footer items <comma-separated>${RST} Customize footer items`,
