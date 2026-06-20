@@ -12,7 +12,8 @@ const LEVEL_COLORS = [
     "\x1b[38;2;57;211;83m",  // 4: #39d353 — heavy
 ];
 
-const CELL = "■";
+const GAPPED_CELL = "■";
+const COMPACT_CELL = "█";
 const GAP = " ";
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = [
@@ -118,8 +119,9 @@ export function cmdUsageHeatmap(n: number = 365): string {
 
     // Cell renderer — with or without trailing gap
     function renderCell(level: number): string {
+        const char = useGap ? GAPPED_CELL : COMPACT_CELL;
         const gap = useGap ? GAP : "";
-        return `${LEVEL_COLORS[level]}${CELL}${RST}${gap}`;
+        return `${LEVEL_COLORS[level]}${char}${RST}${gap}`;
     }
 
     // --- Render ---
