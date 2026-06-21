@@ -1,5 +1,5 @@
 import { B, CYAN, D, RST } from "./ansi";
-import { fmtCost } from "./format";
+import { fmtTokens } from "./format";
 import { scanAllSessions } from "./scan";
 import { toDateStr } from "./dates";
 
@@ -42,7 +42,7 @@ function getLevel(value: number, maxValue: number): number {
 }
 
 /**
- * Render a GitHub-style contribution heatmap of daily token costs,
+ * Render a GitHub-style contribution heatmap of daily token usage,
  * adapting to terminal width automatically.
  *
  * Layout (7 rows × ~53 columns):
@@ -54,7 +54,7 @@ function getLevel(value: number, maxValue: number): number {
  *   Sat ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■
  *
  *   Less  ■ ■ ■ ■ ■  More
- *   Scale: $0  $0.25  $0.50  $1.00  $2.00
+ *   Scale: 0  10K  20K  50K  100K
  */
 export function cmdUsageHeatmap(n: number = 365): string {
   const records = scanAllSessions();
@@ -71,12 +71,12 @@ export function cmdUsageHeatmap(n: number = 365): string {
   const startMs = start.getTime();
   const endMs = today.getTime() + 86_400_000 - 1;
 
-  // Aggregate daily cost
+  // Aggregate daily tokens
   const dailyData = new Map<string, number>();
   for (const r of records) {
     if (r.timestamp < startMs || r.timestamp > endMs) continue;
     const day = toDateStr(r.timestamp);
-    dailyData.set(day, (dailyData.get(day) ?? 0) + r.costTotal);
+    dailyData.set(day, (dailyData.get(day) ?? 0) + r.totalTokens);
   }
 
   let maxDaily = 0;
@@ -142,7 +142,7 @@ export function cmdUsageHeatmap(n: number = 365): string {
 
   lines.push(`${B}${CYAN}── Token Usage Heatmap ──${RST}`);
   lines.push(
-    `${D}Last ${n} days  ·  daily cost by ${fmtCost(maxDaily)} max${RST}`,
+    `${D}Last ${n} days  ·  daily tokens by ${fmtTokens(maxDaily)} max${RST}`,
   );
   if (truncated) {
     lines.push(
@@ -184,27 +184,27 @@ export function cmdUsageHeatmap(n: number = 365): string {
     lines.push(`  Less  ${legendCells} More`);
   }
 
-  // Cost scale
+  // Token scale
   if (maxDaily > 0) {
-    const p25 = fmtCost(maxDaily * 0.25);
-    const p50 = fmtCost(maxDaily * 0.5);
-    const p75 = fmtCost(maxDaily * 0.75);
-    const p100 = fmtCost(maxDaily);
-    lines.push(`  ${D}Scale: $0  ${p25}  ${p50}  ${p75}  ${p100}${RST}`);
+    const p25 = fmtTokens(maxDaily * 0.25);
+    const p50 = fmtTokens(maxDaily * 0.5);
+    const p75 = fmtTokens(maxDaily * 0.75);
+    const p100 = fmtTokens(maxDaily);
+    lines.push(`  ${D}Scale: 0  ${p25}  ${p50}  ${p75}  ${p100}${RST}`);
   }
 
   // Stats summary
   {
     let daysWithData = 0;
-    let totalCost = 0;
+    let totalTokens = 0;
     for (const week of displayWeeks) {
-      for (const cost of week.cells) {
-        if (cost > 0) daysWithData++;
-        totalCost += cost;
+      for (const val of week.cells) {
+        if (val > 0) daysWithData++;
+        totalTokens += val;
       }
     }
     lines.push(
-      `${D}${daysWithData} active days  ·  total ${fmtCost(totalCost)}${RST}`,
+      `${D}${daysWithData} active days  ·  total ${fmtTokens(totalTokens)}${RST}`,
     );
   }
 

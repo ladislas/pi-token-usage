@@ -67,7 +67,7 @@ export default function (pi: ExtensionAPI) {
 
 			// Top-level subcommands
 			const topLevel: AutocompleteItem[] = [
-				{ value: "heatmap", label: "heatmap", description: "GitHub-style contribution heatmap of daily cost" },
+				{ value: "heatmap", label: "heatmap", description: "GitHub-style contribution heatmap of daily tokens" },
 				{ value: "models", label: "models", description: "Breakdown by provider/model" },
 				{ value: "days", label: "days", description: "Daily rollup for last N days (default: 7)" },
 				{ value: "months", label: "months", description: "Monthly rollup" },
