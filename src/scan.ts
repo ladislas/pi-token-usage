@@ -74,8 +74,6 @@ export function scanAllSessions(): UsageRecord[] {
 					continue;
 				}
 
-				if (!line.includes('"assistant"') || !line.includes('"usage"')) continue;
-
 				let entry: any;
 				try {
 					entry = JSON.parse(line);
@@ -83,32 +81,67 @@ export function scanAllSessions(): UsageRecord[] {
 					continue;
 				}
 
-				if (entry.type !== "message") continue;
-				const msg = entry.message;
-				if (!msg || msg.role !== "assistant" || !msg.usage) continue;
+				if (entry.type === "message") {
+					if (!line.includes('"assistant"') || !line.includes('"usage"')) continue;
+					const msg = entry.message;
+					if (!msg || msg.role !== "assistant" || !msg.usage) continue;
 
-				const usage = msg.usage;
-				if (typeof usage.input !== "number" || typeof usage.output !== "number") continue;
+					const usage = msg.usage;
+					if (typeof usage.input !== "number" || typeof usage.output !== "number") continue;
 
-				const totalTokens = usage.totalTokens ?? usage.input + usage.output + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
-				const hash = `${entry.timestamp}:${totalTokens}`;
-				if (seen.has(hash)) continue;
-				seen.add(hash);
+					const totalTokens = usage.totalTokens ?? usage.input + usage.output + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
+					const hash = `${entry.timestamp}:${totalTokens}`;
+					if (seen.has(hash)) continue;
+					seen.add(hash);
 
-				records.push({
-					timestamp: msg.timestamp ?? new Date(entry.timestamp).getTime(),
-					isoTimestamp: entry.timestamp,
-					provider: msg.provider ?? "unknown",
-					model: msg.model ?? "unknown",
-					project,
-					sessionId,
-					input: usage.input,
-					output: usage.output,
-					cacheRead: usage.cacheRead ?? 0,
-					cacheWrite: usage.cacheWrite ?? 0,
-					totalTokens,
-					costTotal: usage.cost?.total ?? 0,
-				});
+					records.push({
+						timestamp: msg.timestamp ?? new Date(entry.timestamp).getTime(),
+						isoTimestamp: entry.timestamp,
+						provider: msg.provider ?? "unknown",
+						model: msg.model ?? "unknown",
+						project,
+						sessionId,
+						input: usage.input,
+						output: usage.output,
+						cacheRead: usage.cacheRead ?? 0,
+						cacheWrite: usage.cacheWrite ?? 0,
+						totalTokens,
+						costTotal: usage.cost?.total ?? 0,
+					});
+					continue;
+				}
+
+				if (entry.type === "custom" && entry.customType === "subagents:record") {
+					const data = entry.data;
+					const subagentId = typeof data?.id === "string" ? data.id : "unknown";
+					if (!Array.isArray(data?.usageRecords)) continue;
+
+					for (const rec of data.usageRecords) {
+						if (!rec || typeof rec.timestamp !== "number" || typeof rec.provider !== "string" || typeof rec.model !== "string" || !rec.usage) continue;
+						const usage = rec.usage;
+						if (typeof usage.input !== "number" || typeof usage.output !== "number") continue;
+
+						const totalTokens = usage.totalTokens ?? usage.input + usage.output + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
+						const hash = `${sessionId}:subagent:${subagentId}:${rec.timestamp}:${totalTokens}`;
+						if (seen.has(hash)) continue;
+						seen.add(hash);
+
+						records.push({
+							timestamp: rec.timestamp,
+							isoTimestamp: new Date(rec.timestamp).toISOString(),
+							provider: rec.provider,
+							model: rec.model,
+							project,
+							sessionId,
+							input: usage.input,
+							output: usage.output,
+							cacheRead: usage.cacheRead ?? 0,
+							cacheWrite: usage.cacheWrite ?? 0,
+							totalTokens,
+							costTotal: usage.cost?.total ?? 0,
+						});
+					}
+				}
 			}
 		}
 	}

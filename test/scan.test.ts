@@ -135,6 +135,80 @@ describe("scanAllSessions", () => {
 		expect(third).toHaveLength(2);
 	});
 
+	it("parses subagents:record usageRecords into individual usage rows", () => {
+		writeSessionFile(tempDir, "project-sub", "2026-04-02T13-55-08-857Z_session-sub.jsonl", [
+			{ type: "session", cwd: "/Users/test/sub-project" },
+			{
+				type: "custom",
+				customType: "subagents:record",
+				timestamp: "2026-04-02T10:05:00.000Z",
+				data: {
+					id: "agent-abc",
+					status: "completed",
+					usageRecords: [
+						{
+							timestamp: new Date("2026-04-02T10:00:00.000Z").getTime(),
+							provider: "openai-codex",
+							model: "gpt-5.6",
+							usage: {
+								input: 100,
+								output: 50,
+								cacheRead: 25,
+								cacheWrite: 10,
+								totalTokens: 185,
+								cost: { total: 0.42 },
+							},
+						},
+						{
+							timestamp: new Date("2026-04-02T10:02:00.000Z").getTime(),
+							provider: "openai-codex",
+							model: "gpt-5.6",
+							usage: {
+								input: 20,
+								output: 10,
+								cost: { total: 0.08 },
+							},
+						},
+					],
+				},
+			},
+		]);
+
+		const records = scanAllSessions();
+		const subRecords = records.filter((r) => r.provider === "openai-codex");
+		expect(subRecords).toHaveLength(2);
+		expect(subRecords.map((r) => r.totalTokens)).toEqual([185, 30]);
+		expect(subRecords[0].project).toBe("/Users/test/sub-project");
+		expect(subRecords[0].sessionId).toBe("session-sub");
+		expect(subRecords[0].costTotal).toBe(0.42);
+		expect(subRecords[1].costTotal).toBe(0.08);
+	});
+
+	it("deduplicates subagents:record usageRecords across re-scans", () => {
+		writeSessionFile(tempDir, "project-dedup", "2026-04-02T13-55-08-857Z_session-dedup.jsonl", [
+			{
+				type: "custom",
+				customType: "subagents:record",
+				timestamp: "2026-04-02T10:05:00.000Z",
+				data: {
+					id: "agent-dedup",
+					usageRecords: [
+						{
+							timestamp: new Date("2026-04-02T10:00:00.000Z").getTime(),
+							provider: "openai-codex",
+							model: "gpt-5.6",
+							usage: { input: 1, output: 1, totalTokens: 2, cost: { total: 0.01 } },
+						},
+					],
+				},
+			},
+		]);
+
+		expect(scanAllSessions()).toHaveLength(1);
+		refreshCachedRecords();
+		expect(scanAllSessions()).toHaveLength(1);
+	});
+
 	it("ignores malformed and incomplete usage entries", () => {
 		writeSessionFile(tempDir, "project-a", "2026-04-02T13-55-08-857Z_session-a.jsonl", [
 			{ type: "message", timestamp: "2026-04-02T10:00:00.000Z", message: { role: "assistant" } },
