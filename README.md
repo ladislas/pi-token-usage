@@ -17,6 +17,7 @@ Pi already shows token usage per session. `pi-token-usage` adds a cross-session 
 - **Per-session breakdown** — top sessions by cost
 - **Live footer status** — today's project and total consumption in the footer
 - **Customizable footer** — enable/disable it, choose metrics, style, separators, presets, or a full template override
+- **Subagent usage** — includes per-message usage from `subagents:record` entries (e.g. `@tintinweb/pi-subagents`)
 - **Fast refresh** — clear cached scan results and rescan session files
 - **Simple commands** — query usage directly from pi with `/usage ...`
 
