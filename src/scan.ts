@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { decodeProjectDir, extractSessionId, getSessionsDir } from "./paths";
+import { decodeProjectDir, extractSessionId, getCodexSubagentRunsDirs, getSessionsDir } from "./paths";
 import { UsageRecord } from "./types";
 
 let cachedRecords: UsageRecord[] | null = null;
@@ -12,125 +12,90 @@ export function refreshCachedRecords(): void {
 export function scanAllSessions(): UsageRecord[] {
 	if (cachedRecords) return cachedRecords;
 
-	const sessionsDir = getSessionsDir();
-	if (!existsSync(sessionsDir)) {
-		cachedRecords = [];
-		return cachedRecords;
-	}
-
 	const records: UsageRecord[] = [];
 	const seen = new Set<string>();
+	const sessionRoots = [...new Set([getSessionsDir(), ...getCodexSubagentRunsDirs()])];
 
-	let projectDirs: string[];
-	try {
-		projectDirs = readdirSync(sessionsDir);
-	} catch {
-		cachedRecords = [];
-		return cachedRecords;
-	}
+	for (const sessionsDir of sessionRoots) {
+		if (!existsSync(sessionsDir)) continue;
 
-	for (const projDir of projectDirs) {
-		const projPath = join(sessionsDir, projDir);
-		let stat;
+		let projectDirs: string[];
 		try {
-			stat = statSync(projPath);
-		} catch {
-			continue;
-		}
-		if (!stat.isDirectory()) continue;
-
-		let files: string[];
-		try {
-			files = readdirSync(projPath).filter((f) => f.endsWith(".jsonl"));
+			projectDirs = readdirSync(sessionsDir);
 		} catch {
 			continue;
 		}
 
-		for (const file of files) {
-			const sessionId = extractSessionId(file);
-			const filePath = join(projPath, file);
-
-			let content: string;
+		for (const projDir of projectDirs) {
+			const projPath = join(sessionsDir, projDir);
+			let stat;
 			try {
-				content = readFileSync(filePath, "utf-8");
+				stat = statSync(projPath);
+			} catch {
+				continue;
+			}
+			if (!stat.isDirectory()) continue;
+
+			let files: string[];
+			try {
+				files = readdirSync(projPath).filter((f) => f.endsWith(".jsonl"));
 			} catch {
 				continue;
 			}
 
-			const lines = content.split("\n");
-			let project = decodeProjectDir(projDir);
-			for (const line of lines) {
-				if (!line.trim()) continue;
+			for (const file of files) {
+				const sessionId = extractSessionId(file);
+				const filePath = join(projPath, file);
 
-				if (line.includes('"type":"session"') && line.includes('"cwd"')) {
-					try {
-						const header = JSON.parse(line);
-						if (typeof header.cwd === "string" && header.cwd.length > 0) {
-							project = header.cwd;
-						}
-					} catch {
-						// ignore invalid header lines
-					}
-					continue;
-				}
-
-				let entry: any;
+				let content: string;
 				try {
-					entry = JSON.parse(line);
+					content = readFileSync(filePath, "utf-8");
 				} catch {
 					continue;
 				}
 
-				if (entry.type === "message") {
-					if (!line.includes('"assistant"') || !line.includes('"usage"')) continue;
-					const msg = entry.message;
-					if (!msg || msg.role !== "assistant" || !msg.usage) continue;
+				const lines = content.split("\n");
+				let project = decodeProjectDir(projDir);
+				for (const line of lines) {
+					if (!line.trim()) continue;
 
-					const usage = msg.usage;
-					if (typeof usage.input !== "number" || typeof usage.output !== "number") continue;
+					if (line.includes('"type":"session"') && line.includes('"cwd"')) {
+						try {
+							const header = JSON.parse(line);
+							if (typeof header.cwd === "string" && header.cwd.length > 0) {
+								project = header.cwd;
+							}
+						} catch {
+							// ignore invalid header lines
+						}
+						continue;
+					}
 
-					const totalTokens = usage.totalTokens ?? usage.input + usage.output + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
-					const hash = `${entry.timestamp}:${totalTokens}`;
-					if (seen.has(hash)) continue;
-					seen.add(hash);
+					let entry: any;
+					try {
+						entry = JSON.parse(line);
+					} catch {
+						continue;
+					}
 
-					records.push({
-						timestamp: msg.timestamp ?? new Date(entry.timestamp).getTime(),
-						isoTimestamp: entry.timestamp,
-						provider: msg.provider ?? "unknown",
-						model: msg.model ?? "unknown",
-						project,
-						sessionId,
-						input: usage.input,
-						output: usage.output,
-						cacheRead: usage.cacheRead ?? 0,
-						cacheWrite: usage.cacheWrite ?? 0,
-						totalTokens,
-						costTotal: usage.cost?.total ?? 0,
-					});
-					continue;
-				}
+					if (entry.type === "message") {
+						if (!line.includes('"assistant"') || !line.includes('"usage"')) continue;
+						const msg = entry.message;
+						if (!msg || msg.role !== "assistant" || !msg.usage) continue;
 
-				if (entry.type === "custom" && entry.customType === "subagents:record") {
-					const data = entry.data;
-					const subagentId = typeof data?.id === "string" ? data.id : "unknown";
-					if (!Array.isArray(data?.usageRecords)) continue;
-
-					for (const rec of data.usageRecords) {
-						if (!rec || typeof rec.timestamp !== "number" || typeof rec.provider !== "string" || typeof rec.model !== "string" || !rec.usage) continue;
-						const usage = rec.usage;
+						const usage = msg.usage;
 						if (typeof usage.input !== "number" || typeof usage.output !== "number") continue;
 
 						const totalTokens = usage.totalTokens ?? usage.input + usage.output + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
-						const hash = `${sessionId}:subagent:${subagentId}:${rec.timestamp}:${totalTokens}`;
+						const hash = `${entry.timestamp}:${totalTokens}`;
 						if (seen.has(hash)) continue;
 						seen.add(hash);
 
 						records.push({
-							timestamp: rec.timestamp,
-							isoTimestamp: new Date(rec.timestamp).toISOString(),
-							provider: rec.provider,
-							model: rec.model,
+							timestamp: msg.timestamp ?? new Date(entry.timestamp).getTime(),
+							isoTimestamp: entry.timestamp,
+							provider: msg.provider ?? "unknown",
+							model: msg.model ?? "unknown",
 							project,
 							sessionId,
 							input: usage.input,
@@ -140,6 +105,39 @@ export function scanAllSessions(): UsageRecord[] {
 							totalTokens,
 							costTotal: usage.cost?.total ?? 0,
 						});
+						continue;
+					}
+
+					if (entry.type === "custom" && entry.customType === "subagents:record") {
+						const data = entry.data;
+						const subagentId = typeof data?.id === "string" ? data.id : "unknown";
+						if (!Array.isArray(data?.usageRecords)) continue;
+
+						for (const rec of data.usageRecords) {
+							if (!rec || typeof rec.timestamp !== "number" || typeof rec.provider !== "string" || typeof rec.model !== "string" || !rec.usage) continue;
+							const usage = rec.usage;
+							if (typeof usage.input !== "number" || typeof usage.output !== "number") continue;
+
+							const totalTokens = usage.totalTokens ?? usage.input + usage.output + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
+							const hash = `${sessionId}:subagent:${subagentId}:${rec.timestamp}:${totalTokens}`;
+							if (seen.has(hash)) continue;
+							seen.add(hash);
+
+							records.push({
+								timestamp: rec.timestamp,
+								isoTimestamp: new Date(rec.timestamp).toISOString(),
+								provider: rec.provider,
+								model: rec.model,
+								project,
+								sessionId,
+								input: usage.input,
+								output: usage.output,
+								cacheRead: usage.cacheRead ?? 0,
+								cacheWrite: usage.cacheWrite ?? 0,
+								totalTokens,
+								costTotal: usage.cost?.total ?? 0,
+							});
+						}
 					}
 				}
 			}

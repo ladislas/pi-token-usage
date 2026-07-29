@@ -1,24 +1,48 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { refreshCachedRecords, scanAllSessions } from "../src/scan";
 
-function writeSessionFile(baseDir: string, projectDir: string, filename: string, lines: Array<Record<string, unknown> | string>) {
-	const dir = join(baseDir, "sessions", projectDir);
+function writeJsonlFile(dir: string, filename: string, lines: Array<Record<string, unknown> | string>) {
 	mkdirSync(dir, { recursive: true });
 	const content = lines.map((line) => (typeof line === "string" ? line : JSON.stringify(line))).join("\n");
 	writeFileSync(join(dir, filename), `${content}\n`, "utf-8");
 }
 
+function writeSessionFile(baseDir: string, projectDir: string, filename: string, lines: Array<Record<string, unknown> | string>) {
+	writeJsonlFile(join(baseDir, "sessions", projectDir), filename, lines);
+}
+
+function writeSubagentSessionFile(runsDir: string, scopeDir: string, filename: string, lines: Array<Record<string, unknown> | string>) {
+	writeJsonlFile(join(runsDir, scopeDir), filename, lines);
+}
+
+function assistantUsage(timestamp: string, input: number, output: number) {
+	return {
+		type: "message",
+		timestamp,
+		message: {
+			role: "assistant",
+			provider: "openai-codex",
+			model: "gpt-5.6-luna",
+			usage: { input, output, cost: { total: 0 } },
+		},
+	};
+}
+
 describe("scanAllSessions", () => {
 	let tempDir: string;
 	let originalAgentDir: string | undefined;
+	let originalTmpDir: string | undefined;
 
 	beforeEach(() => {
 		originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+		originalTmpDir = process.env.TMPDIR;
 		tempDir = mkdtempSync(join(tmpdir(), "pi-token-usage-"));
 		process.env.PI_CODING_AGENT_DIR = tempDir;
+		process.env.TMPDIR = join(tempDir, "os-tmp");
+		mkdirSync(process.env.TMPDIR, { recursive: true });
 		refreshCachedRecords();
 	});
 
@@ -26,6 +50,8 @@ describe("scanAllSessions", () => {
 		refreshCachedRecords();
 		if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 		else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+		if (originalTmpDir === undefined) delete process.env.TMPDIR;
+		else process.env.TMPDIR = originalTmpDir;
 		rmSync(tempDir, { recursive: true, force: true });
 	});
 
@@ -99,6 +125,63 @@ describe("scanAllSessions", () => {
 		expect(records[1].project).toBe("/Users/test/real-project");
 		expect(records[1].sessionId).toBe("session-a");
 		expect(records[0].totalTokens).toBe(30);
+	});
+
+	it("scans configured persistent pi-codex-subagents runs", () => {
+		const packageDir = join(tempDir, "pi-codex-subagents");
+		const runsDir = join(packageDir, "runs");
+		mkdirSync(packageDir, { recursive: true });
+		writeFileSync(join(packageDir, "config.json"), JSON.stringify({ storageDir: "runs" }), "utf-8");
+		writeSubagentSessionFile(runsDir, "parent-scope", "child-session.jsonl", [
+			{ type: "session", cwd: "/Users/test/subagent-project" },
+			assistantUsage("2026-04-02T10:03:00.000Z", 40, 12),
+		]);
+
+		const records = scanAllSessions();
+		expect(records).toHaveLength(1);
+		expect(records[0]).toMatchObject({
+			project: "/Users/test/subagent-project",
+			sessionId: "child-session",
+			provider: "openai-codex",
+			model: "gpt-5.6-luna",
+			input: 40,
+			output: 12,
+			totalTokens: 52,
+		});
+	});
+
+	it("scans legacy pi-codex-subagents runs from the OS temporary directory", () => {
+		const runsDir = join(process.env.TMPDIR!, "pi-codex-subagents", userInfo().username, "runs");
+		writeSubagentSessionFile(runsDir, "parent-scope", "temporary-child.jsonl", [
+			{ type: "session", cwd: "/Users/test/temporary-project" },
+			assistantUsage("2026-04-02T10:04:00.000Z", 20, 8),
+		]);
+
+		const records = scanAllSessions();
+		expect(records).toHaveLength(1);
+		expect(records[0]).toMatchObject({
+			project: "/Users/test/temporary-project",
+			sessionId: "temporary-child",
+			totalTokens: 28,
+		});
+	});
+
+	it("deduplicates subagent usage copied from temporary to persistent storage", () => {
+		const packageDir = join(tempDir, "pi-codex-subagents");
+		const persistentRunsDir = join(packageDir, "runs");
+		const temporaryRunsDir = join(process.env.TMPDIR!, "pi-codex-subagents", userInfo().username, "runs");
+		mkdirSync(packageDir, { recursive: true });
+		writeFileSync(join(packageDir, "config.json"), JSON.stringify({ storageDir: "runs" }), "utf-8");
+		const lines = [
+			{ type: "session", cwd: "/Users/test/copied-project" },
+			assistantUsage("2026-04-02T10:05:00.000Z", 30, 9),
+		];
+		writeSubagentSessionFile(persistentRunsDir, "parent-scope", "copied-child.jsonl", lines);
+		writeSubagentSessionFile(temporaryRunsDir, "parent-scope", "copied-child.jsonl", lines);
+
+		const records = scanAllSessions();
+		expect(records).toHaveLength(1);
+		expect(records[0].totalTokens).toBe(39);
 	});
 
 	it("uses cache until refreshCachedRecords is called", () => {
