@@ -31,13 +31,33 @@ const MONTH_NAMES = [
   "Dec",
 ];
 
-function getLevel(value: number, maxValue: number): number {
-  if (value === 0) return 0;
-  if (maxValue <= 0) return 0;
-  const ratio = value / maxValue;
-  if (ratio <= 0.25) return 1;
-  if (ratio <= 0.5) return 2;
-  if (ratio <= 0.75) return 3;
+type QuartileThresholds = readonly [number, number, number];
+
+function quantile(sortedValues: number[], percentile: number): number {
+  if (sortedValues.length === 0) return 0;
+
+  const index = (sortedValues.length - 1) * percentile;
+  const lower = Math.floor(index);
+  const upper = Math.ceil(index);
+  const weight = index - lower;
+
+  return sortedValues[lower] * (1 - weight) + sortedValues[upper] * weight;
+}
+
+function getQuartileThresholds(values: number[]): QuartileThresholds {
+  const sortedValues = values.filter((value) => value > 0).sort((a, b) => a - b);
+  return [
+    quantile(sortedValues, 0.25),
+    quantile(sortedValues, 0.5),
+    quantile(sortedValues, 0.75),
+  ];
+}
+
+function getLevel(value: number, thresholds: QuartileThresholds): number {
+  if (value <= 0) return 0;
+  if (value < thresholds[0]) return 1;
+  if (value < thresholds[1]) return 2;
+  if (value < thresholds[2]) return 3;
   return 4;
 }
 
@@ -54,7 +74,7 @@ function getLevel(value: number, maxValue: number): number {
  *   Sat ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■ ■
  *
  *   Less  ■ ■ ■ ■ ■  More
- *   Scale: 0  10K  20K  50K  100K
+ *   Quartiles: 0  <10K  <20K  <50K  ≥50K
  */
 export function cmdUsageHeatmap(n: number = 365): string {
   const records = scanAllSessions();
@@ -78,9 +98,6 @@ export function cmdUsageHeatmap(n: number = 365): string {
     const day = toDateStr(r.timestamp);
     dailyData.set(day, (dailyData.get(day) ?? 0) + r.totalTokens);
   }
-
-  let maxDaily = 0;
-  for (const v of dailyData.values()) if (v > maxDaily) maxDaily = v;
 
   // --- Build grid ---
   // Align so rightmost column ends on today.
@@ -130,6 +147,21 @@ export function cmdUsageHeatmap(n: number = 365): string {
     truncated = true;
   }
 
+  let daysWithData = 0;
+  let totalTokens = 0;
+  let peakDaily = 0;
+  const activeDailyValues: number[] = [];
+  for (const week of displayWeeks) {
+    for (const value of week.cells) {
+      totalTokens += value;
+      if (value <= 0) continue;
+      daysWithData++;
+      activeDailyValues.push(value);
+      if (value > peakDaily) peakDaily = value;
+    }
+  }
+  const quartileThresholds = getQuartileThresholds(activeDailyValues);
+
   // Cell renderer — with or without trailing gap
   function renderCell(level: number): string {
     const char = useGap ? GAPPED_CELL : COMPACT_CELL;
@@ -142,7 +174,7 @@ export function cmdUsageHeatmap(n: number = 365): string {
 
   lines.push(`${B}${CYAN}── Token Usage Heatmap ──${RST}`);
   lines.push(
-    `${D}Last ${n} days  ·  daily tokens by ${fmtTokens(maxDaily)} max${RST}`,
+    `${D}Last ${n} days  ·  daily quartiles  ·  ${fmtTokens(peakDaily)} peak${RST}`,
   );
   if (truncated) {
     lines.push(
@@ -171,7 +203,7 @@ export function cmdUsageHeatmap(n: number = 365): string {
   for (let d = 0; d < 7; d++) {
     let row = `  ${DAY_LABELS[d]}  `;
     for (const week of displayWeeks) {
-      const level = getLevel(week.cells[d], maxDaily);
+      const level = getLevel(week.cells[d], quartileThresholds);
       row += renderCell(level);
     }
     lines.push(row);
@@ -184,29 +216,18 @@ export function cmdUsageHeatmap(n: number = 365): string {
     lines.push(`  Less  ${legendCells} More`);
   }
 
-  // Token scale
-  if (maxDaily > 0) {
-    const p25 = fmtTokens(maxDaily * 0.25);
-    const p50 = fmtTokens(maxDaily * 0.5);
-    const p75 = fmtTokens(maxDaily * 0.75);
-    const p100 = fmtTokens(maxDaily);
-    lines.push(`  ${D}Scale: 0  ${p25}  ${p50}  ${p75}  ${p100}${RST}`);
+  // Quartile scale
+  if (peakDaily > 0) {
+    const [q25, q50, q75] = quartileThresholds.map(fmtTokens);
+    lines.push(
+      `  ${D}Quartiles: 0  <${q25}  <${q50}  <${q75}  ≥${q75}${RST}`,
+    );
   }
 
   // Stats summary
-  {
-    let daysWithData = 0;
-    let totalTokens = 0;
-    for (const week of displayWeeks) {
-      for (const val of week.cells) {
-        if (val > 0) daysWithData++;
-        totalTokens += val;
-      }
-    }
-    lines.push(
-      `${D}${daysWithData} active days  ·  total ${fmtTokens(totalTokens)}${RST}`,
-    );
-  }
+  lines.push(
+    `${D}${daysWithData} active days  ·  total ${fmtTokens(totalTokens)}${RST}`,
+  );
 
   return lines.join("\n");
 }
