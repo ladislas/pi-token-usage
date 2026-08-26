@@ -54,14 +54,26 @@ afterEach(() => {
 });
 
 describe("footer lifecycle", () => {
-	it.each(["session_start", "turn_end"])("skips session scanning on %s when the footer is disabled", async (eventName) => {
+	it("skips cache work on session_start when the footer is disabled", async () => {
 		const cwd = makeTempDir();
 		writeFileSync(join(cwd, ".pi-token-usage.json"), JSON.stringify({ enabled: false }));
 		const { handlers, ctx, setStatus } = createHarness(cwd);
 
-		await handlers.get(eventName)?.({}, ctx);
+		await handlers.get("session_start")?.({}, ctx);
 
 		expect(refreshCachedRecords).not.toHaveBeenCalled();
+		expect(scanAllSessions).not.toHaveBeenCalled();
+		expect(setStatus).toHaveBeenCalledWith("token-usage", undefined);
+	});
+
+	it("invalidates cached usage on turn_end without scanning when the footer is disabled", async () => {
+		const cwd = makeTempDir();
+		writeFileSync(join(cwd, ".pi-token-usage.json"), JSON.stringify({ enabled: false }));
+		const { handlers, ctx, setStatus } = createHarness(cwd);
+
+		await handlers.get("turn_end")?.({}, ctx);
+
+		expect(refreshCachedRecords).toHaveBeenCalledOnce();
 		expect(scanAllSessions).not.toHaveBeenCalled();
 		expect(setStatus).toHaveBeenCalledWith("token-usage", undefined);
 	});

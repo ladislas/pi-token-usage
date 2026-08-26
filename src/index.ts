@@ -71,7 +71,8 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("turn_end", async (_event, ctx) => {
-		updateFooterStatus(ctx);
+		refreshCachedRecords();
+		updateFooterStatus(ctx, false);
 	});
 
 	pi.registerCommand("usage", {
