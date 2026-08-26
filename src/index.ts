@@ -91,13 +91,13 @@ export default function (pi: ExtensionAPI) {
 					(footerUpdatesStatus && footerCurrentlyEnabled && !["off", "disable"].includes(footerAction ?? "")));
 			let scanStatusActive = scansUsageHistory;
 			if (scanStatusActive) {
-				ctx.ui.setStatus("token-usage-scan", "Scanning usage history…");
-				await new Promise<void>((resolve) => setTimeout(resolve, 0));
+				ctx.ui.setWidget("token-usage-scan", ["Scanning usage history…"]);
+				await new Promise<void>((resolve) => setTimeout(resolve, 50));
 			}
 			const finishUsageScan = () => {
 				if (!scanStatusActive) return;
 				scanStatusActive = false;
-				ctx.ui.setStatus("token-usage-scan", undefined);
+				ctx.ui.setWidget("token-usage-scan", undefined);
 			};
 			const runUsageScan = <T>(operation: () => T): T => {
 				try {

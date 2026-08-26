@@ -23,6 +23,7 @@ function createHarness(cwd: string) {
 	const handlers = new Map<string, (event: unknown, ctx: any) => unknown>();
 	const commands = new Map<string, { handler: (args: string, ctx: any) => Promise<void> }>();
 	const setStatus = vi.fn();
+	const setWidget = vi.fn();
 	const notify = vi.fn();
 	const pi = {
 		on: vi.fn((name: string, handler: (event: unknown, ctx: any) => unknown) => {
@@ -37,13 +38,14 @@ function createHarness(cwd: string) {
 		ui: {
 			notify,
 			setStatus,
+			setWidget,
 			theme: { fg: (_name: string, text: string) => text },
 		},
 	};
 
 	tokenUsageExtension(pi as any);
 
-	return { commands, handlers, ctx, notify, setStatus };
+	return { commands, handlers, ctx, notify, setStatus, setWidget };
 }
 
 afterEach(() => {
@@ -77,60 +79,79 @@ describe("footer lifecycle", () => {
 });
 
 describe("usage command progress", () => {
-	it("shows a renderable status before scanning usage history", async () => {
-		const cwd = makeTempDir();
-		const { commands, ctx, setStatus } = createHarness(cwd);
-		const usageCommand = commands.get("usage");
-		expect(usageCommand).toBeDefined();
+	it("keeps a visible widget mounted for one render window before scanning", async () => {
+		vi.useFakeTimers();
+		try {
+			const cwd = makeTempDir();
+			const { commands, ctx, setWidget } = createHarness(cwd);
+			const usageCommand = commands.get("usage");
+			expect(usageCommand).toBeDefined();
 
-		const pending = usageCommand!.handler("", ctx);
+			const pending = usageCommand!.handler("", ctx);
 
-		expect(setStatus).toHaveBeenCalledWith("token-usage-scan", "Scanning usage history…");
-		expect(scanAllSessions).not.toHaveBeenCalled();
+			expect(setWidget).toHaveBeenCalledWith("token-usage-scan", ["Scanning usage history…"]);
+			expect(scanAllSessions).not.toHaveBeenCalled();
 
-		await pending;
+			await vi.advanceTimersByTimeAsync(49);
+			expect(scanAllSessions).not.toHaveBeenCalled();
 
-		expect(scanAllSessions).toHaveBeenCalledOnce();
-		expect(setStatus).toHaveBeenLastCalledWith("token-usage-scan", undefined);
+			await vi.advanceTimersByTimeAsync(1);
+			await pending;
+
+			expect(scanAllSessions).toHaveBeenCalledOnce();
+			expect(setWidget).toHaveBeenLastCalledWith("token-usage-scan", undefined);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
-	it("clears the status when scanning fails", async () => {
+	it("clears the widget when scanning fails", async () => {
 		const cwd = makeTempDir();
-		const { commands, ctx, setStatus } = createHarness(cwd);
+		const { commands, ctx, setWidget } = createHarness(cwd);
 		vi.mocked(scanAllSessions).mockImplementationOnce(() => {
 			throw new Error("scan failed");
 		});
 
 		const pending = commands.get("usage")!.handler("models", ctx);
 
-		expect(setStatus).toHaveBeenCalledWith("token-usage-scan", "Scanning usage history…");
+		expect(setWidget).toHaveBeenCalledWith("token-usage-scan", ["Scanning usage history…"]);
 		await expect(pending).rejects.toThrow("scan failed");
-		expect(setStatus).toHaveBeenLastCalledWith("token-usage-scan", undefined);
+		expect(setWidget).toHaveBeenLastCalledWith("token-usage-scan", undefined);
 	});
 
-	it.each(["help", "?", "--help", "footer", "footer vars"])("does not show scan progress for /usage %s", async (args) => {
+	it.each([
+		"help",
+		"?",
+		"--help",
+		"footer",
+		"footer show",
+		"footer vars",
+		"footer off",
+		"footer disable",
+		"footer unknown",
+	])("does not show scan progress for /usage %s", async (args) => {
 		const cwd = makeTempDir();
-		const { commands, ctx, setStatus } = createHarness(cwd);
+		const { commands, ctx, setWidget } = createHarness(cwd);
 
 		await commands.get("usage")!.handler(args, ctx);
 
 		expect(scanAllSessions).not.toHaveBeenCalled();
-		expect(setStatus).not.toHaveBeenCalledWith("token-usage-scan", expect.anything());
+		expect(setWidget).not.toHaveBeenCalledWith("token-usage-scan", expect.anything());
 	});
 
 	it("shows progress when enabling the footer triggers a scan", async () => {
 		const cwd = makeTempDir();
-		const { commands, ctx, setStatus } = createHarness(cwd);
+		const { commands, ctx, setWidget } = createHarness(cwd);
 
 		const pending = commands.get("usage")!.handler("footer on", ctx);
 
-		expect(setStatus).toHaveBeenCalledWith("token-usage-scan", "Scanning usage history…");
+		expect(setWidget).toHaveBeenCalledWith("token-usage-scan", ["Scanning usage history…"]);
 		expect(scanAllSessions).not.toHaveBeenCalled();
 
 		await pending;
 
 		expect(scanAllSessions).toHaveBeenCalledOnce();
-		expect(setStatus).toHaveBeenLastCalledWith("token-usage-scan", undefined);
+		expect(setWidget).toHaveBeenLastCalledWith("token-usage-scan", undefined);
 	});
 
 	it("does not invalidate the cache twice when refresh also updates an enabled footer", async () => {
