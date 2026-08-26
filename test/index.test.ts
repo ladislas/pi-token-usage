@@ -21,16 +21,21 @@ function makeTempDir(): string {
 
 function createHarness(cwd: string) {
 	const handlers = new Map<string, (event: unknown, ctx: any) => unknown>();
+	const commands = new Map<string, { handler: (args: string, ctx: any) => Promise<void> }>();
 	const setStatus = vi.fn();
+	const notify = vi.fn();
 	const pi = {
 		on: vi.fn((name: string, handler: (event: unknown, ctx: any) => unknown) => {
 			handlers.set(name, handler);
 		}),
-		registerCommand: vi.fn(),
+		registerCommand: vi.fn((name: string, command: { handler: (args: string, ctx: any) => Promise<void> }) => {
+			commands.set(name, command);
+		}),
 	};
 	const ctx = {
 		cwd,
 		ui: {
+			notify,
 			setStatus,
 			theme: { fg: (_name: string, text: string) => text },
 		},
@@ -38,7 +43,7 @@ function createHarness(cwd: string) {
 
 	tokenUsageExtension(pi as any);
 
-	return { handlers, ctx, setStatus };
+	return { commands, handlers, ctx, notify, setStatus };
 }
 
 afterEach(() => {
@@ -68,5 +73,74 @@ describe("footer lifecycle", () => {
 
 		expect(refreshCachedRecords).toHaveBeenCalledOnce();
 		expect(scanAllSessions).toHaveBeenCalledOnce();
+	});
+});
+
+describe("usage command progress", () => {
+	it("shows a renderable status before scanning usage history", async () => {
+		const cwd = makeTempDir();
+		const { commands, ctx, setStatus } = createHarness(cwd);
+		const usageCommand = commands.get("usage");
+		expect(usageCommand).toBeDefined();
+
+		const pending = usageCommand!.handler("", ctx);
+
+		expect(setStatus).toHaveBeenCalledWith("token-usage-scan", "Scanning usage history…");
+		expect(scanAllSessions).not.toHaveBeenCalled();
+
+		await pending;
+
+		expect(scanAllSessions).toHaveBeenCalledOnce();
+		expect(setStatus).toHaveBeenLastCalledWith("token-usage-scan", undefined);
+	});
+
+	it("clears the status when scanning fails", async () => {
+		const cwd = makeTempDir();
+		const { commands, ctx, setStatus } = createHarness(cwd);
+		vi.mocked(scanAllSessions).mockImplementationOnce(() => {
+			throw new Error("scan failed");
+		});
+
+		const pending = commands.get("usage")!.handler("models", ctx);
+
+		expect(setStatus).toHaveBeenCalledWith("token-usage-scan", "Scanning usage history…");
+		await expect(pending).rejects.toThrow("scan failed");
+		expect(setStatus).toHaveBeenLastCalledWith("token-usage-scan", undefined);
+	});
+
+	it.each(["help", "?", "--help", "footer", "footer vars"])("does not show scan progress for /usage %s", async (args) => {
+		const cwd = makeTempDir();
+		const { commands, ctx, setStatus } = createHarness(cwd);
+
+		await commands.get("usage")!.handler(args, ctx);
+
+		expect(scanAllSessions).not.toHaveBeenCalled();
+		expect(setStatus).not.toHaveBeenCalledWith("token-usage-scan", expect.anything());
+	});
+
+	it("shows progress when enabling the footer triggers a scan", async () => {
+		const cwd = makeTempDir();
+		const { commands, ctx, setStatus } = createHarness(cwd);
+
+		const pending = commands.get("usage")!.handler("footer on", ctx);
+
+		expect(setStatus).toHaveBeenCalledWith("token-usage-scan", "Scanning usage history…");
+		expect(scanAllSessions).not.toHaveBeenCalled();
+
+		await pending;
+
+		expect(scanAllSessions).toHaveBeenCalledOnce();
+		expect(setStatus).toHaveBeenLastCalledWith("token-usage-scan", undefined);
+	});
+
+	it("does not invalidate the cache twice when refresh also updates an enabled footer", async () => {
+		const cwd = makeTempDir();
+		writeFileSync(join(cwd, ".pi-token-usage.json"), JSON.stringify({ enabled: true }));
+		const { commands, ctx } = createHarness(cwd);
+
+		await commands.get("usage")!.handler("refresh", ctx);
+
+		expect(refreshCachedRecords).toHaveBeenCalledOnce();
+		expect(scanAllSessions).toHaveBeenCalledTimes(2);
 	});
 });

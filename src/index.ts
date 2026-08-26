@@ -25,6 +25,22 @@ import {
 } from "./footer";
 import { refreshCachedRecords, scanAllSessions } from "./scan";
 
+const FOOTER_UPDATE_ACTIONS = new Set([
+	"on",
+	"enable",
+	"off",
+	"disable",
+	"items",
+	"preset",
+	"separator",
+	"style",
+	"template",
+	"untemplate",
+	"reset",
+]);
+
+const NON_SCANNING_USAGE_COMMANDS = new Set(["help", "?", "--help"]);
+
 /**
  * pi-token-usage — Lifetime token usage tracking and cost analytics
  *
@@ -39,13 +55,13 @@ import { refreshCachedRecords, scanAllSessions } from "./scan";
  *   /usage refresh      — Force rescan
  */
 export default function (pi: ExtensionAPI) {
-	const updateFooterStatus = (ctx: any) => {
+	const updateFooterStatus = (ctx: any, refresh = true) => {
 		const config = loadFooterConfig(ctx.cwd);
 		if (!config.enabled) {
 			ctx.ui.setStatus("token-usage", undefined);
 			return;
 		}
-		refreshCachedRecords();
+		if (refresh) refreshCachedRecords();
 		const status = buildFooterStatus(scanAllSessions(), ctx.cwd, config);
 		ctx.ui.setStatus("token-usage", status ? applyFooterTheme(status, config.style, ctx.ui.theme) : undefined);
 	};
@@ -65,6 +81,32 @@ export default function (pi: ExtensionAPI) {
 			const parts = trimmed.length > 0 ? trimmed.split(/\s+/) : [];
 			const sub = parts[0]?.toLowerCase();
 
+			const footerAction = sub === "footer" ? parts[1]?.toLowerCase() : undefined;
+			const footerUpdatesStatus = FOOTER_UPDATE_ACTIONS.has(footerAction ?? "");
+			const footerCurrentlyEnabled = sub === "footer" && loadFooterConfig(ctx.cwd).enabled;
+			const scansUsageHistory =
+				!NON_SCANNING_USAGE_COMMANDS.has(sub ?? "") &&
+				(sub !== "footer" ||
+					["on", "enable", "reset"].includes(footerAction ?? "") ||
+					(footerUpdatesStatus && footerCurrentlyEnabled && !["off", "disable"].includes(footerAction ?? "")));
+			let scanStatusActive = scansUsageHistory;
+			if (scanStatusActive) {
+				ctx.ui.setStatus("token-usage-scan", "Scanning usage history…");
+				await new Promise<void>((resolve) => setTimeout(resolve, 0));
+			}
+			const finishUsageScan = () => {
+				if (!scanStatusActive) return;
+				scanStatusActive = false;
+				ctx.ui.setStatus("token-usage-scan", undefined);
+			};
+			const runUsageScan = <T>(operation: () => T): T => {
+				try {
+					return operation();
+				} finally {
+					finishUsageScan();
+				}
+			};
+
 			let output: string;
 
 			switch (sub) {
@@ -74,23 +116,23 @@ export default function (pi: ExtensionAPI) {
 					output = cmdUsageHelp();
 					break;
 				case "models":
-					output = cmdUsageModels();
+					output = runUsageScan(cmdUsageModels);
 					break;
 				case "days": {
 					const n = parseInt(parts[1]) || 7;
-					output = cmdUsageDays(n);
+					output = runUsageScan(() => cmdUsageDays(n));
 					break;
 				}
 				case "months":
-					output = cmdUsageMonths();
+					output = runUsageScan(cmdUsageMonths);
 					break;
 				case "sessions": {
 					const n = parseInt(parts[1]) || 20;
-					output = cmdUsageSessions(n);
+					output = runUsageScan(() => cmdUsageSessions(n));
 					break;
 				}
 				case "projects":
-					output = cmdUsageProjects();
+					output = runUsageScan(cmdUsageProjects);
 					break;
 				case "footer": {
 					const action = parts[1]?.toLowerCase();
@@ -176,20 +218,21 @@ export default function (pi: ExtensionAPI) {
 					} catch (error) {
 						output = error instanceof Error ? error.message : String(error);
 					}
-					updateFooterStatus(ctx);
+					if (footerUpdatesStatus) runUsageScan(() => updateFooterStatus(ctx));
 					break;
 				}
 				case "refresh":
-					output = refreshUsageData();
+					output = runUsageScan(refreshUsageData);
 					ctx.ui.notify("Cache cleared and data rescanned.", "info");
-					updateFooterStatus(ctx);
+					updateFooterStatus(ctx, false);
 					break;
 				default:
-					output = cmdUsageSummary();
+					output = runUsageScan(cmdUsageSummary);
 					break;
 			}
 
 			ctx.ui.notify(output, "info");
+			finishUsageScan();
 		},
 	});
 }
