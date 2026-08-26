@@ -40,8 +40,12 @@ import { refreshCachedRecords, scanAllSessions } from "./scan";
  */
 export default function (pi: ExtensionAPI) {
 	const updateFooterStatus = (ctx: any) => {
-		refreshCachedRecords();
 		const config = loadFooterConfig(ctx.cwd);
+		if (!config.enabled) {
+			ctx.ui.setStatus("token-usage", undefined);
+			return;
+		}
+		refreshCachedRecords();
 		const status = buildFooterStatus(scanAllSessions(), ctx.cwd, config);
 		ctx.ui.setStatus("token-usage", status ? applyFooterTheme(status, config.style, ctx.ui.theme) : undefined);
 	};
