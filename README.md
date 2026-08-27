@@ -10,7 +10,7 @@ Pi already shows token usage per session. `pi-token-usage` adds a cross-session 
 
 ## Features
 
-- **Lifetime totals** — tokens, cost, and cache usage across all sessions
+- **Lifetime totals** — tokens, cost, and cache usage across parent and subagent sessions
 - **Time rollups** — today, last 7 days, last 30 days, and by month
 - **Per-model breakdown** — usage grouped by provider/model
 - **Per-project breakdown** — usage grouped by working directory
