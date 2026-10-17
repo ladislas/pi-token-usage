@@ -23,7 +23,8 @@ import {
 	saveProjectFooterConfig,
 	writeProjectFooterConfig,
 } from "./footer";
-import { refreshCachedRecords, scanAllSessions } from "./scan";
+import { refreshCachedRecords, scanSessionsSince } from "./scan";
+import { todayStart } from "./dates";
 
 /**
  * pi-token-usage — Lifetime token usage tracking and cost analytics
@@ -40,9 +41,16 @@ import { refreshCachedRecords, scanAllSessions } from "./scan";
  */
 export default function (pi: ExtensionAPI) {
 	const updateFooterStatus = (ctx: any) => {
+		// Drop the cached full-history snapshot only: the next /usage command reads fresh data,
+		// without paying for a history scan on every lifecycle event.
 		refreshCachedRecords();
 		const config = loadFooterConfig(ctx.cwd);
-		const status = buildFooterStatus(scanAllSessions(), ctx.cwd, config);
+		if (!config.enabled) {
+			ctx.ui.setStatus("token-usage", undefined);
+			return;
+		}
+		// Footer metrics are today-only: only files touched today can contribute.
+		const status = buildFooterStatus(scanSessionsSince(todayStart()), ctx.cwd, config);
 		ctx.ui.setStatus("token-usage", status ? applyFooterTheme(status, config.style, ctx.ui.theme) : undefined);
 	};
 
