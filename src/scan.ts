@@ -11,11 +11,23 @@ export function refreshCachedRecords(): void {
 
 export function scanAllSessions(): UsageRecord[] {
 	if (cachedRecords) return cachedRecords;
+	cachedRecords = scanSessions();
+	return cachedRecords;
+}
 
+/**
+ * Same scan, but session files last modified before `sinceMs` are skipped: they
+ * cannot contain any record from that window. The footer is today-only, so this
+ * avoids re-reading the entire session history on every start and every turn.
+ */
+export function scanSessionsSince(sinceMs: number): UsageRecord[] {
+	return scanSessions(sinceMs);
+}
+
+function scanSessions(sinceMs?: number): UsageRecord[] {
 	const sessionsDir = getSessionsDir();
 	if (!existsSync(sessionsDir)) {
-		cachedRecords = [];
-		return cachedRecords;
+		return [];
 	}
 
 	const records: UsageRecord[] = [];
@@ -25,8 +37,7 @@ export function scanAllSessions(): UsageRecord[] {
 	try {
 		projectDirs = readdirSync(sessionsDir);
 	} catch {
-		cachedRecords = [];
-		return cachedRecords;
+		return [];
 	}
 
 	for (const projDir of projectDirs) {
@@ -49,6 +60,16 @@ export function scanAllSessions(): UsageRecord[] {
 		for (const file of files) {
 			const sessionId = extractSessionId(file);
 			const filePath = join(projPath, file);
+
+			if (sinceMs !== undefined) {
+				let mtimeMs: number;
+				try {
+					mtimeMs = statSync(filePath).mtimeMs;
+				} catch {
+					continue;
+				}
+				if (mtimeMs < sinceMs) continue;
+			}
 
 			let content: string;
 			try {
@@ -114,6 +135,5 @@ export function scanAllSessions(): UsageRecord[] {
 	}
 
 	records.sort((a, b) => a.timestamp - b.timestamp);
-	cachedRecords = records;
 	return records;
 }

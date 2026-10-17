@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { refreshCachedRecords, scanAllSessions } from "../src/scan";
+import { refreshCachedRecords, scanAllSessions, scanSessionsSince } from "../src/scan";
 
 function writeSessionFile(baseDir: string, projectDir: string, filename: string, lines: Array<Record<string, unknown> | string>) {
 	const dir = join(baseDir, "sessions", projectDir);
@@ -148,5 +148,35 @@ describe("scanAllSessions", () => {
 		expect(records[0].provider).toBe("unknown");
 		expect(records[0].model).toBe("unknown");
 		expect(records[0].totalTokens).toBe(11);
+	});
+
+	describe("scanSessionsSince", () => {
+		const usage = (input: number) => ({
+			type: "message",
+			timestamp: "2026-04-02T10:01:00.000Z",
+			message: { role: "assistant", usage: { input, output: 1, cost: { total: 0.01 } } },
+		});
+
+		it("reads only session files modified inside the window", () => {
+			writeSessionFile(tempDir, "project-stale", "2026-04-02T13-55-08-857Z_session-stale.jsonl", [usage(1)]);
+			writeSessionFile(tempDir, "project-recent", "2026-04-02T13-56-08-857Z_session-recent.jsonl", [usage(2)]);
+
+			const windowStart = Date.now() - 60_000;
+			const staleAt = new Date(windowStart - 3_600_000);
+			utimesSync(join(tempDir, "sessions", "project-stale", "2026-04-02T13-55-08-857Z_session-stale.jsonl"), staleAt, staleAt);
+
+			const records = scanSessionsSince(windowStart);
+			expect(records.map((r) => r.sessionId)).toEqual(["session-recent"]);
+			expect(records[0].input).toBe(2);
+		});
+
+		it("does not populate or poison the cache used by the full scan", () => {
+			writeSessionFile(tempDir, "project-stale", "2026-04-02T13-55-08-857Z_session-stale.jsonl", [usage(1)]);
+			const staleAt = new Date(Date.now() - 3_600_000);
+			utimesSync(join(tempDir, "sessions", "project-stale", "2026-04-02T13-55-08-857Z_session-stale.jsonl"), staleAt, staleAt);
+
+			expect(scanSessionsSince(Date.now() - 60_000)).toHaveLength(0);
+			expect(scanAllSessions()).toHaveLength(1);
+		});
 	});
 });
